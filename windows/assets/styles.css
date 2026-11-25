@@ -61,6 +61,7 @@ html, body {
 .titlebar-actions::-webkit-scrollbar { display: none; }
 
 .tb-btn {
+  display: inline-flex; align-items: center; gap: 5px;
   border: 1px solid var(--card-stroke);
   background: var(--card-fill);
   color: var(--text-primary);
@@ -69,6 +70,10 @@ html, body {
   cursor: pointer; white-space: nowrap;
   transition: background 0.15s, border-color 0.15s;
 }
+.btn-accent, .btn-glass, .detail-back, .skip-floating {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+}
+.brand-logo { border-radius: 7px; flex-shrink: 0; }
 .tb-btn:hover { background: rgba(255,255,255,0.14); }
 .tb-btn.active {
   background: color-mix(in srgb, var(--accent) 24%, transparent);

@@ -108,7 +108,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub Release v1.0.0
+    name: Publish GitHub Release v1.0.1
     needs: [ build-windows, build-macos ]
     runs-on: ubuntu-latest
     steps:
@@ -124,15 +124,16 @@ jobs:
           test -s release-assets/ManiFlix.exe
           test -s release-assets/ManiFlix-macOS.dmg
 
-      - name: Publish Release v1.0.0
+      - name: Publish Release v1.0.1
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: ManiFlix Desktop v1.0.0
+          tag_name: v1.0.1
+          name: ManiFlix Desktop v1.0.1
           body: |
-            ## ManiFlix Desktop v1.0.0
-            - **Windows (`ManiFlix.exe`)**: Native Rust (`tao` + `wry` + `sysinfo`) — khởi động mặc định Dạng Điện thoại (`410×820`), chuyển trực tiếp sang Dạng Màn Hình (`1240×800`), Ghim nổi, Toàn màn hình, phát HLS qua `hls.min.js` + TheIntroDB Skip Intro, xem trước Taurus & Kiểm tra mạng/thiết bị `sysinfo`.
-            - **macOS (`ManiFlix-macOS.dmg`)**: Native SwiftUI macOS 26 Liquid Glass (`NavigationSplitView` Sidebar, chuyển trực tiếp `📱 Chế độ Điện thoại 400×800` với thanh capsule Liquid Glass nổi <-> `🖥️ Chế độ Máy tính 1200×780`, `📌 Ghim nổi`, `AVPlayer` Spatial Audio + TheIntroDB, Giao diện Taurus Live Preview & Kiểm tra mạng/thiết bị `sysctlbyname` + SwiftUI `Canvas`).
+            ## ManiFlix Desktop v1.0.1
+            - Tích hợp biểu tượng chính thức ManiFlix vào ứng dụng Windows (`ManiFlix.exe`) và macOS (`ManiFlix-macOS.dmg`).
+            - Khởi động mặc định giao diện màn hình rộng (`1180×760` Windows, `1200×780` macOS), tự động thích ứng khi thu nhỏ cửa sổ.
+            - Sửa lỗi hiển thị poster/banner phim (`upload/vod/`), đồng bộ 100% icon SVG/SF Symbols sạch đẹp không emoji trên các nút.
           files: |
             release-assets/ManiFlix.exe
             release-assets/ManiFlix-macOS.dmg

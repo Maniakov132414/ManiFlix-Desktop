@@ -119,16 +119,6 @@ struct MacRootShell: View {
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
                 Button {
-                    appState.toggleWindowPhoneMode()
-                } label: {
-                    Label(
-                        appState.isPhoneMode ? "Chế độ Máy tính" : "Chế độ Điện thoại",
-                        systemImage: appState.isPhoneMode ? "desktopcomputer" : "iphone"
-                    )
-                }
-                .help("Chuyển giữa Chế độ Điện thoại (400×800) và Máy tính (1200×780)")
-
-                Button {
                     appState.toggleWindowPinned()
                 } label: {
                     Label("Ghim nổi", systemImage: appState.isWindowPinned ? "pin.fill" : "pin")

@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ManiFlix Desktop</title>
+  <title>ManiFlix</title>
   <link rel="stylesheet" href="/assets/styles.css" />
   <script src="/assets/hls.min.js"></script>
 </head>
@@ -12,34 +12,81 @@
 
   <header class="titlebar">
     <div class="titlebar-left">
-      <div class="brand-badge">M</div>
+      <svg class="brand-logo" viewBox="0 0 512 512" width="26" height="26" fill="none" aria-hidden="true">
+        <defs>
+          <linearGradient id="bgGrad" x1="0" y1="0" x2="512" y2="512" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#13192b"/>
+            <stop offset="55%" stop-color="#0b0f1d"/>
+            <stop offset="100%" stop-color="#190d2c"/>
+          </linearGradient>
+          <linearGradient id="rimGrad" x1="36" y1="36" x2="476" y2="476" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#fb7185"/>
+            <stop offset="50%" stop-color="#e11d48"/>
+            <stop offset="100%" stop-color="#9333ea"/>
+          </linearGradient>
+          <linearGradient id="mLeftGrad" x1="108" y1="128" x2="270" y2="388" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ff4d6d"/>
+            <stop offset="55%" stop-color="#e11d48"/>
+            <stop offset="100%" stop-color="#9333ea"/>
+          </linearGradient>
+          <linearGradient id="playPrism" x1="230" y1="138" x2="408" y2="368" gradientUnits="userSpaceOnUse">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="70%" stop-color="#ffe4e6"/>
+            <stop offset="100%" stop-color="#f5d0fe"/>
+          </linearGradient>
+        </defs>
+        <rect x="16" y="16" width="480" height="480" rx="116" fill="url(#bgGrad)"/>
+        <rect x="22" y="22" width="468" height="468" rx="110" stroke="url(#rimGrad)" stroke-width="12" stroke-opacity="0.9"/>
+        <path d="M112 374V142C112 129.85 126.4 123.4 135.4 131.6L226 214L194 254L158 220V374C158 385.05 149.05 394 138 394H132C120.95 394 112 385.05 112 374Z" fill="url(#mLeftGrad)"/>
+        <path d="M192 222L254 142C262.2 131.4 278.8 134.8 282.2 147.8L302 224L236 286L192 222Z" fill="url(#mLeftGrad)" opacity="0.95"/>
+        <path d="M252 148C252 134.6 267.1 126.8 278.2 134.3L404.6 220.1C414.8 227 414.8 242 404.6 248.9L278.2 334.7C267.1 342.2 252 334.4 252 321V148Z" fill="url(#playPrism)"/>
+        <rect x="252" y="356" width="118" height="36" rx="18" fill="url(#rimGrad)"/>
+      </svg>
       <div class="brand-text">
         <span class="brand-name">ManiFlix</span>
-        <span id="winSizePill" class="win-pill">410×820</span>
       </div>
     </div>
     <div class="titlebar-actions">
-      <button id="btnFormToggle" class="tb-btn" title="Chuyển dạng Điện thoại / Màn hình">🖥️ Dạng Màn Hình (1240×800)</button>
-      <button id="btnPinToggle" class="tb-btn" title="Ghim cửa sổ luôn nổi">📌 Ghim nổi</button>
-      <button id="btnFullscreen" class="tb-btn" title="Toàn màn hình">⛶ Toàn màn hình</button>
-      <button id="btnAccount" class="tb-btn tb-account" title="Tài khoản">👤</button>
+      <button id="btnPinToggle" class="tb-btn" title="Ghim cửa sổ luôn nổi">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>
+        <span>Ghim nổi</span>
+      </button>
+      <button id="btnFullscreen" class="tb-btn" title="Toàn màn hình">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/></svg>
+        <span>Toàn màn hình</span>
+      </button>
+      <button id="btnAccount" class="tb-btn tb-account" title="Tài khoản">
+        <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+        <span>Đăng nhập</span>
+      </button>
     </div>
   </header>
 
   <div id="appShell" class="app-shell">
     <aside id="sidebar" class="sidebar">
       <div class="sidebar-nav">
-        <button class="nav-item active" data-tab="discover"><span class="nav-ico">▶</span><span>Trang chủ</span></button>
-        <button class="nav-item" data-tab="search"><span class="nav-ico">⌕</span><span>Tìm kiếm</span></button>
-        <button class="nav-item" data-tab="library"><span class="nav-ico">🔖</span><span>Tủ phim</span></button>
-        <button class="nav-item" data-tab="settings"><span class="nav-ico">⚙</span><span>Cài đặt</span></button>
+        <button class="nav-item active" data-tab="discover">
+          <svg class="nav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+          <span>Trang chủ</span>
+        </button>
+        <button class="nav-item" data-tab="search">
+          <svg class="nav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <span>Tìm kiếm</span>
+        </button>
+        <button class="nav-item" data-tab="library">
+          <svg class="nav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+          <span>Tủ phim</span>
+        </button>
+        <button class="nav-item" data-tab="settings">
+          <svg class="nav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+          <span>Cài đặt</span>
+        </button>
       </div>
       <div class="sidebar-footer">
         <div id="sidebarUserCard" class="sidebar-user-card">
           <div class="su-title">Khách</div>
           <div class="su-sub">Đăng nhập để đồng bộ</div>
         </div>
-        <div class="sidebar-runtime">Rust Native • tao + wry</div>
       </div>
     </aside>
 
@@ -47,10 +94,22 @@
   </div>
 
   <nav id="bottomNav" class="bottom-nav">
-    <button class="bnav-item active" data-tab="discover"><span class="bnav-ico">▶</span><span>Trang chủ</span></button>
-    <button class="bnav-item" data-tab="search"><span class="bnav-ico">⌕</span><span>Tìm kiếm</span></button>
-    <button class="bnav-item" data-tab="library"><span class="bnav-ico">🔖</span><span>Tủ phim</span></button>
-    <button class="bnav-item" data-tab="settings"><span class="bnav-ico">⚙</span><span>Cài đặt</span></button>
+    <button class="bnav-item active" data-tab="discover">
+      <svg class="bnav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 3 20 12 6 21 6 3"/></svg>
+      <span>Trang chủ</span>
+    </button>
+    <button class="bnav-item" data-tab="search">
+      <svg class="bnav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+      <span>Tìm kiếm</span>
+    </button>
+    <button class="bnav-item" data-tab="library">
+      <svg class="bnav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/></svg>
+      <span>Tủ phim</span>
+    </button>
+    <button class="bnav-item" data-tab="settings">
+      <svg class="bnav-ico" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+      <span>Cài đặt</span>
+    </button>
   </nav>
 
   <div id="toastBanner" class="toast-banner hidden"></div>

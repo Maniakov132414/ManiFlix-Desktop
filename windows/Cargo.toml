@@ -1,8 +1,8 @@
 [package]
 name = "maniflix-desktop"
-version = "1.0.0"
+version = "1.0.1"
 edition = "2021"
-description = "ManiFlix Native Windows Desktop App (tao + wry + sysinfo)"
+description = "ManiFlix Desktop App"
 
 [[bin]]
 name = "ManiFlix"
@@ -15,6 +15,9 @@ sysinfo = "0.32"
 ureq = { version = "2.10", features = ["json", "tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+
+[target.'cfg(windows)'.build-dependencies]
+winres = "0.1"
 
 [profile.release]
 opt-level = 3

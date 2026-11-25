@@ -135,11 +135,14 @@ struct DeviceMonitorView: View {
     }
 
     private func tierBadge(_ text: String, active: Bool) -> some View {
-        Text("\(text) \(active ? "✓" : "•")")
-            .font(.caption.weight(.semibold))
-            .foregroundColor(active ? .white : ManiFlixTheme.secondaryText(colorScheme))
-            .padding(.horizontal, 10).padding(.vertical, 5)
-            .adaptiveGlassCapsule(interactive: false, tint: active ? prefs.currentAccentColor : nil)
+        HStack(spacing: 4) {
+            Text(text)
+            if active { Image(systemName: "checkmark") }
+        }
+        .font(.caption.weight(.semibold))
+        .foregroundColor(active ? .white : ManiFlixTheme.secondaryText(colorScheme))
+        .padding(.horizontal, 10).padding(.vertical, 5)
+        .adaptiveGlassCapsule(interactive: false, tint: active ? prefs.currentAccentColor : nil)
     }
 
     private var hardwareCard: some View {

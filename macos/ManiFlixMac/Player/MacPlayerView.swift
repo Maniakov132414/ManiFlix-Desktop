@@ -58,8 +58,14 @@ struct MacPlayerView: View {
                     }
 
                     Button("Đổi nguồn") { engine.switchSource() }
-                    Button("⏮") { engine.previousEpisode() }.disabled(!engine.hasPreviousEpisode)
-                    Button("⏭") { engine.nextEpisode() }.disabled(!engine.hasNextEpisode)
+                    Button { engine.previousEpisode() } label: {
+                        Image(systemName: "backward.end.fill")
+                    }
+                    .disabled(!engine.hasPreviousEpisode)
+                    Button { engine.nextEpisode() } label: {
+                        Image(systemName: "forward.end.fill")
+                    }
+                    .disabled(!engine.hasNextEpisode)
                 }
                 .padding(.horizontal, 16).padding(.vertical, 10)
                 .background(Color.black.opacity(0.85))
@@ -86,10 +92,13 @@ struct MacPlayerView: View {
                         Button {
                             engine.skipMarker(skip)
                         } label: {
-                            Text(skip.type == "outro" ? "Bỏ qua kết thúc →" : (skip.label ?? "Bỏ qua mở đầu →"))
-                                .font(.subheadline.weight(.bold))
-                                .foregroundColor(.white)
-                                .padding(.horizontal, 16).padding(.vertical, 10)
+                            HStack(spacing: 6) {
+                                Text(skip.type == "outro" ? "Bỏ qua kết thúc" : (skip.label ?? "Bỏ qua mở đầu"))
+                                Image(systemName: "arrow.right")
+                            }
+                            .font(.subheadline.weight(.bold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 16).padding(.vertical, 10)
                         }
                         .buttonStyle(.plain)
                         .adaptiveGlassCapsule(interactive: true, tint: prefs.currentAccentColor)

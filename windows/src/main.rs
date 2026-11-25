@@ -20,6 +20,7 @@ const INDEX_HTML: &str = include_str!("../assets/index.html");
 const STYLES_CSS: &str = include_str!("../assets/styles.css");
 const APP_JS: &str = include_str!("../assets/app.js");
 const HLS_JS: &str = include_str!("../assets/hls.min.js");
+const ICON_RGBA_64: &[u8] = include_bytes!("../assets/icon_64x64.rgba");
 
 #[derive(Debug)]
 enum UserEvent {
@@ -199,10 +200,13 @@ fn main() {
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
+    let app_icon = tao::window::Icon::from_rgba(ICON_RGBA_64.to_vec(), 64, 64).ok();
+
     let window = WindowBuilder::new()
         .with_title("ManiFlix")
-        .with_inner_size(LogicalSize::new(410.0, 820.0))
+        .with_inner_size(LogicalSize::new(1180.0, 760.0))
         .with_min_inner_size(LogicalSize::new(360.0, 640.0))
+        .with_window_icon(app_icon)
         .build(&event_loop)
         .expect("Failed to create ManiFlix window");
 

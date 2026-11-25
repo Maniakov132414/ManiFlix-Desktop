@@ -129,9 +129,11 @@ struct ThemeSettingsView: View {
                 Text("PHIM MỚI • FHD").font(.system(size: 9.5, weight: .heavy)).foregroundColor(accent)
                 Text("Thanh Gươm Diệt Quỷ").font(.headline.bold()).foregroundColor(txt)
                 HStack(spacing: 8) {
-                    Text("▶ Xem ngay").font(.caption.weight(.bold)).foregroundColor(.white)
+                    Label("Xem ngay", systemImage: "play.fill")
+                        .font(.caption.weight(.bold)).foregroundColor(.white)
                         .padding(.horizontal, 12).padding(.vertical, 6).background(accent).clipShape(Capsule())
-                    Text("+ Tủ phim").font(.caption.weight(.semibold)).foregroundColor(txt)
+                    Label("Tủ phim", systemImage: "plus")
+                        .font(.caption.weight(.semibold)).foregroundColor(txt)
                         .padding(.horizontal, 12).padding(.vertical, 6).background(surf).clipShape(Capsule())
                 }
             }

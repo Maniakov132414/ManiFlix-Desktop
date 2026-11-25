@@ -21,13 +21,13 @@ pub struct WindowTelemetry {
 impl Default for WindowTelemetry {
     fn default() -> Self {
         Self {
-            width: 410,
-            height: 820,
+            width: 1180,
+            height: 760,
             scale_factor: 1.0,
             always_on_top: false,
             fullscreen: false,
             maximized: false,
-            layout_mode: "phone".to_string(),
+            layout_mode: "desktop".to_string(),
             monitor_name: "Primary Display".to_string(),
             monitor_width: 1920,
             monitor_height: 1080,

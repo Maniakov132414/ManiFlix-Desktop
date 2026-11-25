@@ -28,6 +28,33 @@
     { id: 'genre:vien-tuong', label: 'Viễn tưởng' }
   ];
 
+  const IMG_FALLBACK_SVG =
+    'data:image/svg+xml;utf8,' +
+    encodeURIComponent(
+      '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 300"><rect width="200" height="300" fill="#18181c"/><rect x="64" y="114" width="72" height="52" rx="8" fill="none" stroke="#3f3f46" stroke-width="4"/><polygon points="92,130 116,140 92,150" fill="#52525b"/></svg>'
+    );
+
+  function svgIcon(name, size = 14) {
+    const paths = {
+      play: '<polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/>',
+      check: '<polyline points="20 6 9 17 4 12"/>',
+      plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+      bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
+      eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
+      back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
+      forward: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+      chevRight: '<polyline points="9 18 15 12 9 6"/>',
+      chevUp: '<polyline points="18 15 12 9 6 15"/>',
+      chevDown: '<polyline points="6 9 12 15 18 9"/>',
+      cloudUp: '<polyline points="16 16 12 12 8 16"/><line x1="12" y1="12" x2="12" y2="21"/><path d="M20.39 18.39A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.3"/>',
+      close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
+      prev: '<polygon points="19 20 9 12 19 4 19 20" fill="currentColor"/><line x1="5" y1="19" x2="5" y2="5"/>',
+      next: '<polygon points="5 4 15 12 5 20 5 4" fill="currentColor"/><line x1="19" y1="5" x2="19" y2="19"/>',
+      user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
+    };
+    return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">${paths[name] || ''}</svg>`;
+  }
+
   const state = {
     tab: 'discover',
     detailSlug: null,
@@ -36,7 +63,7 @@
     detailRelated: [],
     selectedServerIdx: 0,
     franchiseExpanded: true,
-    settingsSubPage: 'main', // main | theme | monitor
+    settingsSubPage: 'main',
     librarySeg: 'history',
     category: 'all',
     heroIdx: 0,
@@ -64,7 +91,7 @@
       introSkip: 'button',
       autoNext: true
     }, JSON.parse(localStorage.getItem('mf.prefs') || '{}')),
-    desktop: { width: 410, height: 820, alwaysOnTop: false, fullscreen: false, maximized: false, layoutMode: 'phone', monitorName: 'Primary', refreshRateHz: 60 },
+    desktop: { width: 1180, height: 760, alwaysOnTop: false, fullscreen: false, maximized: false, layoutMode: 'desktop', monitorName: 'Primary', refreshRateHz: 60 },
     monitor: {
       liveProbe: true,
       timer: null,
@@ -78,9 +105,27 @@
       ulSeries: [],
       pingSeries: [],
       serverCpuSeries: []
-    },
-    player: null
+    }
   };
+
+  // Delegated broken-image fallback (poster_url -> thumb_url -> SVG placeholder)
+  document.addEventListener(
+    'error',
+    (e) => {
+      const img = e.target;
+      if (!img || img.tagName !== 'IMG') return;
+      const step = img.getAttribute('data-fb-step') || '0';
+      const altSrc = img.getAttribute('data-fallback');
+      if (step === '0' && altSrc && img.src !== altSrc) {
+        img.setAttribute('data-fb-step', '1');
+        img.src = altSrc;
+      } else if (step !== '2') {
+        img.setAttribute('data-fb-step', '2');
+        img.src = IMG_FALLBACK_SVG;
+      }
+    },
+    true
+  );
 
   function savePrefs() {
     localStorage.setItem('mf.prefs', JSON.stringify(state.prefs));
@@ -134,7 +179,9 @@
     if (s.startsWith('http://') || s.startsWith('https://')) return s;
     if (s.startsWith('//')) return 'https:' + s;
     if (s.startsWith('/')) s = s.slice(1);
-    if (s.startsWith('uploads/')) return 'https://phimimg.com/' + s;
+    if (s.startsWith('upload/') || s.startsWith('uploads/') || s.includes('/')) {
+      return 'https://phimimg.com/' + s;
+    }
     return 'https://phimimg.com/upload/vod/' + s;
   }
 
@@ -166,25 +213,18 @@
   }
 
   function isDesktopLayout() {
-    return window.innerWidth > 700 || state.desktop.maximized || state.desktop.fullscreen || state.desktop.layoutMode === 'desktop';
+    return window.innerWidth > 700 || state.desktop.maximized || state.desktop.fullscreen;
   }
 
   function syncDesktopChrome() {
     const shell = document.getElementById('appShell');
-    const desk = isDesktopLayout();
-    shell.classList.toggle('desktop-mode', desk);
-    const pill = document.getElementById('winSizePill');
-    pill.textContent = `${state.desktop.width || window.innerWidth}×${state.desktop.height || window.innerHeight}`;
-
-    const btnForm = document.getElementById('btnFormToggle');
-    btnForm.textContent = desk ? '📱 Dạng ĐT (410×820)' : '🖥️ Dạng Màn Hình (1240×800)';
-    btnForm.classList.toggle('active', desk);
+    shell.classList.toggle('desktop-mode', isDesktopLayout());
 
     const btnPin = document.getElementById('btnPinToggle');
-    btnPin.classList.toggle('active', !!state.desktop.alwaysOnTop);
+    if (btnPin) btnPin.classList.toggle('active', !!state.desktop.alwaysOnTop);
 
     const btnFs = document.getElementById('btnFullscreen');
-    btnFs.classList.toggle('active', !!state.desktop.fullscreen);
+    if (btnFs) btnFs.classList.toggle('active', !!state.desktop.fullscreen);
   }
 
   window.__maniflixDesktopState = (snap) => {
@@ -200,7 +240,7 @@
     try {
       const snap = await api(`/__desktop/window?op=${encodeURIComponent(op)}`);
       window.__maniflixDesktopState(snap);
-    } catch (e) {
+    } catch {
       toast('Không thể đổi trạng thái cửa sổ');
     }
   }
@@ -257,10 +297,10 @@
     const btn = document.getElementById('btnAccount');
     const card = document.getElementById('sidebarUserCard');
     if (state.user) {
-      btn.textContent = `👤 ${state.user.displayName || state.user.username}`;
+      btn.innerHTML = `${svgIcon('user', 13)}<span>${esc(state.user.displayName || state.user.username)}</span>`;
       card.innerHTML = `<div class="su-title">${esc(state.user.displayName || state.user.username)}</div><div class="su-sub">@${esc(state.user.username)}</div>`;
     } else {
-      btn.textContent = '👤 Đăng nhập';
+      btn.innerHTML = `${svgIcon('user', 13)}<span>Đăng nhập</span>`;
       card.innerHTML = `<div class="su-title">Chưa đăng nhập</div><div class="su-sub">Bấm để đăng nhập / đăng ký</div>`;
     }
   }
@@ -306,13 +346,14 @@
   }
 
   function movieCardHtml(m) {
-    const img = resolveImg(m.poster_url || m.thumb_url);
+    const primary = resolveImg(m.poster_url || m.thumb_url) || IMG_FALLBACK_SVG;
+    const secondary = resolveImg(m.thumb_url || m.poster_url) || '';
     const badge = m.quality || m.episode_current || '';
-    const yr = m.year ? `${m.year} • ` : '';
+    const yr = m.year ? `${m.year} / ` : '';
     return `
       <div class="movie-card" data-slug="${esc(m.slug)}">
         <div class="poster-wrap">
-          <img loading="lazy" src="${esc(img)}" alt="${esc(m.name)}" />
+          <img loading="lazy" src="${esc(primary)}" data-fallback="${esc(secondary)}" alt="${esc(m.name)}" />
           ${badge ? `<span class="poster-badge">${esc(badge)}</span>` : ''}
         </div>
         <div class="movie-name">${esc(m.name)}</div>
@@ -334,23 +375,24 @@
 
     if (state.category === 'all') {
       if (hero) {
-        const bg = resolveImg(hero.thumb_url || hero.poster_url);
+        const bg = resolveImg(hero.thumb_url || hero.poster_url) || IMG_FALLBACK_SVG;
+        const bgFb = resolveImg(hero.poster_url) || '';
         html += `
           <div class="hero-card">
-            <img class="hero-bg" src="${esc(bg)}" alt="" />
+            <img class="hero-bg" src="${esc(bg)}" data-fallback="${esc(bgFb)}" alt="" />
             <div class="hero-grad"></div>
             <div class="hero-body">
-              <span class="hero-tag">PHIM MỚI • ${esc(hero.quality || 'HD')}</span>
+              <span class="hero-tag">PHIM MỚI / ${esc(hero.quality || 'HD')}</span>
               <h2 class="hero-title">${esc(hero.name)}</h2>
-              <div class="hero-sub">${esc(hero.origin_name || '')} ${hero.year ? '• ' + hero.year : ''}</div>
+              <div class="hero-sub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
               <div class="hero-actions">
-                <button class="btn-accent" data-open-slug="${esc(hero.slug)}">▶ Xem ngay</button>
-                <button class="btn-glass" data-fav-slug="${esc(hero.slug)}">${isFavorite(hero.slug) ? '✓ Đã lưu' : '+ Tủ phim'}</button>
+                <button class="btn-accent" data-open-slug="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
+                <button class="btn-glass" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
               </div>
             </div>
           </div>
           <div class="hero-dots">
-            ${featured.map((_, i) => `<button class="hero-dot ${i === state.heroIdx ? 'active' : ''}" data-hero-idx="${i}"></button>`).join('')}
+            ${featured.map((_, i) => `<button class="hero-dot ${i === state.heroIdx ? 'active' : ''}" data-hero-idx="${i}" aria-label="Slide ${i + 1}"></button>`).join('')}
           </div>`;
       }
 
@@ -360,7 +402,7 @@
           html += `
             <div class="movie-card" data-slug="${esc(h.slug)}">
               <div class="poster-wrap">
-                <img src="${esc(resolveImg(h.poster))}" alt="" />
+                <img src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
                 <span class="poster-badge">${esc(h.episodeName || 'Tập 1')}</span>
               </div>
               <div class="movie-name">${esc(h.name || h.slug)}</div>
@@ -424,7 +466,7 @@
 
   function renderDetail() {
     const res = state.detailData;
-    let html = `<button class="detail-back" id="btnDetailBack">← Quay lại</button>`;
+    let html = `<button class="detail-back" id="btnDetailBack">${svgIcon('back', 14)}<span>Quay lại</span></button>`;
     if (!res || !res.movie) {
       return html + `<div class="glass-box">Đang tải chi tiết phim...</div>`;
     }
@@ -432,18 +474,19 @@
     const servers = res.episodes || [];
     const srv = servers[state.selectedServerIdx] || { server_data: [] };
     const hist = state.history.find(h => h.slug === m.slug);
-    const resumeIdx = hist && Number.isInteger(hist.episodeIndex) && hist.episodeIndex < srv.server_data.length ? hist.episodeIndex : 0;
     const synopsis = (m.content || '').replace(/<[^>]+>/g, '').trim();
+    const poster = resolveImg(m.poster_url || m.thumb_url) || IMG_FALLBACK_SVG;
+    const posterFb = resolveImg(m.thumb_url || m.poster_url) || '';
 
     const leftCol = `
       <div>
-        <img class="detail-poster" src="${esc(resolveImg(m.poster_url || m.thumb_url))}" alt="" />
+        <img class="detail-poster" src="${esc(poster)}" data-fallback="${esc(posterFb)}" alt="" />
         <h2 class="detail-title">${esc(m.name)}</h2>
-        ${m.origin_name ? `<div class="detail-origin">${esc(m.origin_name)} • ${esc(m.year || '')} • ${esc(m.lang || '')}</div>` : ''}
+        ${m.origin_name ? `<div class="detail-origin">${esc(m.origin_name)} ${m.year ? '/ ' + esc(m.year) : ''} ${m.lang ? '/ ' + esc(m.lang) : ''}</div>` : ''}
         <div class="detail-actions">
-          <button class="btn-accent" id="btnDetailPlay">▶ ${hist ? 'Xem tiếp • ' + esc(hist.episodeName || 'Tập 1') : 'Phát'}</button>
-          <button class="btn-glass" id="btnDetailFav" style="color:var(--text-primary)">${isFavorite(m.slug) ? '🔖 Đã lưu' : '🔖 Lưu'}</button>
-          <button class="btn-glass" id="btnDetailBlock" style="color:var(--text-primary)">🚫 Ẩn</button>
+          <button class="btn-accent" id="btnDetailPlay">${svgIcon('play', 14)}<span>${hist ? 'Xem tiếp: ' + esc(hist.episodeName || 'Tập 1') : 'Phát'}</span></button>
+          <button class="btn-glass" id="btnDetailFav" style="color:var(--text-primary)">${svgIcon('bookmark', 14)}<span>${isFavorite(m.slug) ? 'Đã lưu' : 'Lưu'}</span></button>
+          <button class="btn-glass" id="btnDetailBlock" style="color:var(--text-primary)">${svgIcon('eyeOff', 14)}<span>Ẩn</span></button>
         </div>
         <div class="chips-row">
           ${m.quality ? `<span class="chip">${esc(m.quality)}</span>` : ''}
@@ -459,7 +502,7 @@
         <div class="glass-box">
           <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" id="btnToggleFranchise">
             <strong>Các phần phim (${state.detailFranchise.length})</strong>
-            <span style="font-size:12px;color:var(--accent)">${state.franchiseExpanded ? 'Thu gọn ▲' : 'Mở rộng ▼'}</span>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--accent)">${state.franchiseExpanded ? 'Thu gọn ' + svgIcon('chevUp', 13) : 'Mở rộng ' + svgIcon('chevDown', 13)}</span>
           </div>
           ${state.franchiseExpanded ? `<div class="franchise-list">${state.detailFranchise.map(s => `
             <button class="season-chip ${s.slug === m.slug ? 'active' : ''}" data-slug="${esc(s.slug)}">${esc(s.fullTitle || s.name || s.slug)}</button>
@@ -532,10 +575,10 @@
         const pct = h.duration > 1 ? Math.min(100, Math.round((h.currentTime || 0) / h.duration * 100)) : 0;
         return `
           <div class="hist-row" data-slug="${esc(h.slug)}">
-            <img class="hist-thumb" src="${esc(resolveImg(h.poster))}" alt="" />
+            <img class="hist-thumb" src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
             <div style="flex:1;min-width:0">
               <div class="movie-name">${esc(h.name || h.slug)}</div>
-              <div class="movie-meta">${esc(h.episodeName || 'Tập 1')} • ${pct}%</div>
+              <div class="movie-meta">${esc(h.episodeName || 'Tập 1')} (${pct}%)</div>
               <div class="progress-track"><div class="progress-fill" style="width:${pct}%"></div></div>
             </div>
             <button class="tb-btn" data-del-hist="${esc(h.slug)}">Xoá</button>
@@ -549,7 +592,7 @@
       if (!state.blocked.length) return html + `<div class="glass-box">Chưa có phim nào bị ẩn.</div>`;
       html += state.blocked.map(b => `
         <div class="hist-row">
-          <img class="hist-thumb" style="width:48px;height:68px" src="${esc(resolveImg(b.poster))}" alt="" />
+          <img class="hist-thumb" style="width:48px;height:68px" src="${esc(resolveImg(b.poster) || IMG_FALLBACK_SVG)}" alt="" />
           <div style="flex:1;min-width:0">
             <div class="movie-name">${esc(b.name)}</div>
             <div class="movie-meta">Đang ẩn khỏi Trang chủ & Tìm kiếm</div>
@@ -575,7 +618,7 @@
                 <div style="font-weight:700">${state.user ? esc(state.user.displayName || state.user.username) : 'Đăng nhập hoặc tạo tài khoản'}</div>
                 <div class="s-sub">${state.user ? '@' + esc(state.user.username) : 'Đồng bộ tủ phim, lịch sử & giao diện'}</div>
               </div>
-              <span>${state.user ? 'Đăng xuất' : '›'}</span>
+              <span style="display:inline-flex;align-items:center;gap:4px">${state.user ? 'Đăng xuất' : svgIcon('chevRight', 16)}</span>
             </div>
           </div>
         </div>
@@ -586,16 +629,16 @@
             <div class="s-row clickable" data-subpage="theme">
               <div>
                 <div style="font-weight:700">Giao diện & Chủ đề</div>
-                <div class="s-sub">Xem trước Taurus trực tiếp • ${modeLabels[state.prefs.themeMode] || 'Tối'}</div>
+                <div class="s-sub">Xem trước trực tiếp (${modeLabels[state.prefs.themeMode] || 'Tối'})</div>
               </div>
-              <span style="font-weight:700;color:var(--accent)">›</span>
+              <span style="color:var(--accent);display:inline-flex">${svgIcon('chevRight', 16)}</span>
             </div>
             <div class="s-row clickable" data-subpage="monitor">
               <div>
                 <div style="font-weight:700">Kiểm tra mạng & Thiết bị</div>
-                <div class="s-sub">Rust sysinfo CPU/RAM/Disk & Speedtest trực tiếp</div>
+                <div class="s-sub">CPU, RAM, ổ đĩa & đo tốc độ mạng</div>
               </div>
-              <span style="font-weight:700;color:var(--accent)">›</span>
+              <span style="color:var(--accent);display:inline-flex">${svgIcon('chevRight', 16)}</span>
             </div>
           </div>
         </div>
@@ -620,7 +663,7 @@
               <input type="checkbox" id="chkAutoNext" ${state.prefs.autoNext ? 'checked' : ''} />
             </div>
             <div class="s-row">
-              <span>Số cột dạng Điện thoại</span>
+              <span>Số cột cửa sổ nhỏ</span>
               <select id="selPhoneCols">
                 <option value="2" ${state.prefs.phoneCols === 2 ? 'selected' : ''}>2 cột</option>
                 <option value="3" ${state.prefs.phoneCols === 3 ? 'selected' : ''}>3 cột</option>
@@ -632,7 +675,7 @@
         <div class="settings-section">
           <div class="settings-label">Ứng dụng</div>
           <div class="settings-card">
-            <div class="s-row"><span>Phiên bản</span><span class="s-sub">ManiFlix Windows v1.0.0 (Rust tao/wry)</span></div>
+            <div class="s-row"><span>Phiên bản</span><span class="s-sub">1.0.1</span></div>
             <div class="s-row clickable" id="btnResetPrefs"><span style="color:#ff453a;font-weight:600">Đặt lại mặc định</span></div>
           </div>
         </div>
@@ -645,32 +688,32 @@
     const subTxt = pal.isLight ? '#5C5C69' : '#A4A4AD';
     return `
       <div class="settings-wrap">
-        <button class="detail-back" data-subpage="main">← Cài đặt</button>
+        <button class="detail-back" data-subpage="main">${svgIcon('back', 14)}<span>Cài đặt</span></button>
         <h3 style="margin:0 0 12px">Giao diện & Chủ đề</h3>
 
         <div class="taurus-frame" style="background:${pal.bg};color:${txt}">
           <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-            <span style="font-size:11px;font-weight:700;color:${subTxt}">XEM TRƯỚC TRỰC TIẾP (TAURUS)</span>
+            <span style="font-size:11px;font-weight:700;color:${subTxt}">XEM TRƯỚC TRỰC TIẾP</span>
             <span style="font-size:10.5px;padding:2px 8px;border-radius:999px;background:${pal.accent};color:#fff;font-weight:700">${esc(state.prefs.themeMode.toUpperCase())}</span>
           </div>
           <div class="taurus-hero">
-            <div style="font-size:9.5px;font-weight:800;color:${pal.accent};margin-bottom:3px">PHIM MỚI • FHD</div>
+            <div style="font-size:9.5px;font-weight:800;color:${pal.accent};margin-bottom:3px">PHIM MỚI / FHD</div>
             <div style="font-size:15px;font-weight:800;margin-bottom:8px">Thanh Gươm Diệt Quỷ</div>
             <div style="display:flex;gap:8px">
-              <span style="background:${pal.accent};color:#fff;padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700">▶ Xem ngay</span>
-              <span style="background:${pal.surface};color:${txt};padding:5px 12px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.12)">+ Tủ phim</span>
+              <span style="display:inline-flex;align-items:center;gap:5px;background:${pal.accent};color:#fff;padding:5px 12px;border-radius:999px;font-size:11px;font-weight:700">${svgIcon('play', 11)}<span>Xem ngay</span></span>
+              <span style="display:inline-flex;align-items:center;gap:5px;background:${pal.surface};color:${txt};padding:5px 12px;border-radius:999px;font-size:11px;font-weight:600;border:1px solid rgba(255,255,255,0.12)">${svgIcon('plus', 11)}<span>Tủ phim</span></span>
             </div>
           </div>
           <div class="taurus-cards">
             <div class="taurus-card" style="background:${pal.surface}">
               <div class="taurus-poster" style="background:linear-gradient(135deg,${pal.accent}55,${pal.surface})"></div>
               <div style="font-size:11.5px;font-weight:700">Interstellar</div>
-              <div style="font-size:10px;color:${subTxt}">2014 • Vietsub</div>
+              <div style="font-size:10px;color:${subTxt}">2014 / Vietsub</div>
             </div>
             <div class="taurus-card" style="background:${pal.surface}">
               <div class="taurus-poster" style="background:linear-gradient(135deg,#0A84FF55,${pal.surface})"></div>
               <div style="font-size:11.5px;font-weight:700">Dune: Part Two</div>
-              <div style="font-size:10px;color:${subTxt}">2024 • FHD</div>
+              <div style="font-size:10px;color:${subTxt}">2024 / FHD</div>
             </div>
           </div>
           <div class="taurus-nav" style="background:${pal.surface}">
@@ -708,7 +751,7 @@
           <div class="s-row"><span>Màu nền tuỳ chỉnh</span><input type="color" id="pickBg" value="${esc(state.prefs.bg)}" /></div>
           <div class="s-row"><span>Màu thẻ / bề mặt</span><input type="color" id="pickSurface" value="${esc(state.prefs.surface)}" /></div>
           <div class="s-row"><span>Ánh nền theo ảnh phim</span><input type="checkbox" id="chkAmbient" ${state.prefs.ambient?'checked':''} /></div>
-          ${state.user ? `<div class="s-row clickable" id="btnSyncTheme"><span style="color:var(--accent);font-weight:700">☁ Đồng bộ lên tài khoản</span></div>` : ''}
+          ${state.user ? `<div class="s-row clickable" id="btnSyncTheme"><span style="display:inline-flex;align-items:center;gap:6px;color:var(--accent);font-weight:700">${svgIcon('cloudUp', 15)}<span>Đồng bộ lên tài khoản</span></span></div>` : ''}
         </div>
       </div>`;
   }
@@ -734,7 +777,7 @@
       <div class="settings-wrap" style="max-width:980px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
           <div style="display:flex;align-items:center;gap:8px">
-            <button class="detail-back" style="margin:0" data-subpage="main">← Cài đặt</button>
+            <button class="detail-back" style="margin:0" data-subpage="main">${svgIcon('back', 14)}<span>Cài đặt</span></button>
             <h3 style="margin:0">Kiểm tra mạng & Thiết bị</h3>
             <span class="win-pill" style="color:#30D158;border-color:#30D158">LIVE</span>
           </div>
@@ -748,7 +791,7 @@
           <div class="kpi-card"><div class="kpi-lbl">Tải xuống (Probe)</div><div class="kpi-val" style="color:#30D158">${dl.toFixed(1)} Mbps</div></div>
           <div class="kpi-card"><div class="kpi-lbl">Tải lên (Probe)</div><div class="kpi-val" style="color:#0A84FF">${ul.toFixed(1)} Mbps</div></div>
           <div class="kpi-card"><div class="kpi-lbl">Ping / Jitter</div><div class="kpi-val">${Math.round(ping)} / ${Math.round(jitter)} ms</div></div>
-          <div class="kpi-card"><div class="kpi-lbl">RAM Tiến trình / CPU</div><div class="kpi-val">${si ? si.processRssMb.toFixed(0) : '—'} MB • ${si ? si.cpuUsagePct.toFixed(0) : '0'}%</div></div>
+          <div class="kpi-card"><div class="kpi-lbl">RAM Tiến trình / CPU</div><div class="kpi-val">${si ? si.processRssMb.toFixed(0) : '--'} MB (${si ? si.cpuUsagePct.toFixed(0) : '0'}%)</div></div>
         </div>
 
         <div class="charts-grid">
@@ -769,21 +812,21 @@
           </div>
           <div class="progress-track" style="height:8px;margin-bottom:10px"><div class="progress-fill" style="width:${score}%"></div></div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
-            <span class="chip ${t720?'active':''}">720p HD ${t720?'✓':'•'}</span>
-            <span class="chip ${t1080?'active':''}">1080p60 FHD ${t1080?'✓':'•'}</span>
-            <span class="chip ${t4k?'active':''}">2K / 4K HDR ${t4k?'✓':'•'}</span>
+            <span class="chip ${t720?'active':''}" style="display:inline-flex;align-items:center;gap:4px"><span>720p HD</span>${t720?svgIcon('check',12):''}</span>
+            <span class="chip ${t1080?'active':''}" style="display:inline-flex;align-items:center;gap:4px"><span>1080p60 FHD</span>${t1080?svgIcon('check',12):''}</span>
+            <span class="chip ${t4k?'active':''}" style="display:inline-flex;align-items:center;gap:4px"><span>2K / 4K HDR</span>${t4k?svgIcon('check',12):''}</span>
           </div>
         </div>
 
         <div class="spec-grid">
           <div class="glass-box">
-            <div style="font-weight:700;margin-bottom:8px">Phần cứng Windows (Rust sysinfo)</div>
+            <div style="font-weight:700;margin-bottom:8px">Phần cứng thiết bị</div>
             <div class="spec-kv"><span>Hệ điều hành</span><strong>${si ? esc(si.osName + ' ' + si.osVersion) : '...'}</strong></div>
             <div class="spec-kv"><span>CPU</span><strong>${si ? esc(si.cpuBrand) : '...'}</strong></div>
             <div class="spec-kv"><span>Nhân CPU</span><strong>${si ? `${si.cpuPhysicalCores} vật lý / ${si.cpuLogicalCores} luồng` : '...'}</strong></div>
             <div class="spec-kv"><span>RAM Hệ thống</span><strong>${si ? `${(si.usedRamMb/1024).toFixed(1)} / ${(si.totalRamMb/1024).toFixed(1)} GB (Trống ${(si.freeRamMb/1024).toFixed(1)} GB)` : '...'}</strong></div>
             <div class="spec-kv"><span>Ổ đĩa (${si ? esc(si.diskMount) : 'C:'})</span><strong>${si ? `Trống ${si.diskFreeGb} / ${si.diskTotalGb} GB` : '...'}</strong></div>
-            <div class="spec-kv"><span>Cửa sổ & Màn hình</span><strong>${si ? `${si.window.width}×${si.window.height} • ${si.window.refreshRateHz} Hz` : '...'}</strong></div>
+            <div class="spec-kv"><span>Cửa sổ & Màn hình</span><strong>${si ? `${si.window.width}x${si.window.height} (${si.window.refreshRateHz} Hz)` : '...'}</strong></div>
           </div>
           <div class="glass-box">
             <div style="font-weight:700;margin-bottom:8px">Máy chủ & Mạng (phim.maniakov.bond)</div>
@@ -891,7 +934,6 @@
 
     const root = document.getElementById('playerRoot');
     let hls = null;
-    let aspect = 'fit';
     let markers = [];
     let skippedIds = new Set();
     let lastSave = -999;
@@ -908,17 +950,17 @@
           </div>
           <div style="display:flex;gap:6px">
             <button class="tb-btn" id="btnPlayerAspect">Tỉ lệ: Gốc</button>
-            <button class="tb-btn" id="btnPlayerClose">✕ Đóng</button>
+            <button class="tb-btn" id="btnPlayerClose">${svgIcon('close', 13)}<span>Đóng</span></button>
           </div>
         </div>
         <div id="playerStage" class="player-stage">
           <video id="videoEl" controls autoplay playsinline></video>
-          <button id="btnSkipMarker" class="skip-floating hidden">Bỏ qua mở đầu →</button>
+          <button id="btnSkipMarker" class="skip-floating hidden"><span>Bỏ qua mở đầu</span>${svgIcon('forward', 14)}</button>
         </div>
         <div class="player-controls">
           <div style="display:flex;gap:6px;align-items:center">
-            <button class="tb-btn" id="btnPrevEp" ${episodeIndex <= 0 ? 'disabled' : ''}>⏮ Tập trước</button>
-            <button class="tb-btn" id="btnNextEp" ${episodeIndex + 1 >= srv.server_data.length ? 'disabled' : ''}>Tập sau ⏭</button>
+            <button class="tb-btn" id="btnPrevEp" ${episodeIndex <= 0 ? 'disabled' : ''}>${svgIcon('prev', 13)}<span>Tập trước</span></button>
+            <button class="tb-btn" id="btnNextEp" ${episodeIndex + 1 >= srv.server_data.length ? 'disabled' : ''}><span>Tập sau</span>${svgIcon('next', 13)}</button>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
             <select id="selPlayerSpeed">
@@ -1004,7 +1046,6 @@
       const t = video.currentTime || 0;
       const dur = video.duration || 0;
 
-      // Auto-cut ads + Skip intro/outro (TheIntroDB)
       let activeSkip = null;
       for (const m of markers) {
         const end = m.openEnd && dur > m.start ? dur : m.end;
@@ -1027,7 +1068,8 @@
       }
 
       if (activeSkip) {
-        skipBtn.textContent = (activeSkip.m.type === 'outro' ? 'Bỏ qua kết thúc →' : (activeSkip.m.label || 'Bỏ qua mở đầu →'));
+        const lbl = activeSkip.m.type === 'outro' ? 'Bỏ qua kết thúc' : (activeSkip.m.label || 'Bỏ qua mở đầu');
+        skipBtn.innerHTML = `<span>${esc(lbl)}</span>${svgIcon('forward', 14)}`;
         skipBtn.classList.remove('hidden');
         skipBtn.onclick = () => {
           skippedIds.add(activeSkip.m.id);
@@ -1069,7 +1111,7 @@
           <div class="modal-card">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
               <strong>${state.user ? 'Tài khoản' : (reg ? 'Đăng ký' : 'Đăng nhập')}</strong>
-              <button class="tb-btn" id="btnCloseAuth">✕</button>
+              <button class="tb-btn" id="btnCloseAuth">${svgIcon('close', 13)}</button>
             </div>
             ${state.user ? `
               <div class="s-sub" style="margin-bottom:12px">Đang đăng nhập: <strong>@${esc(state.user.username)}</strong></div>
@@ -1270,7 +1312,6 @@
       };
     });
 
-    // Settings & subpages
     const sAuth = document.getElementById('btnSettingsAuth');
     if (sAuth) sAuth.onclick = openAuthModal;
     mc.querySelectorAll('[data-subpage]').forEach(el => {
@@ -1343,7 +1384,6 @@
     };
   });
 
-  document.getElementById('btnFormToggle').onclick = () => windowOp(isDesktopLayout() ? 'phone' : 'desktop');
   document.getElementById('btnPinToggle').onclick = () => windowOp(state.desktop.alwaysOnTop ? 'unpin' : 'pin');
   document.getElementById('btnFullscreen').onclick = () => windowOp('fullscreen');
   document.getElementById('btnAccount').onclick = openAuthModal;
