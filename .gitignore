@@ -1,0 +1,8 @@
+windows/target/
+macos/*.xcodeproj/
+macos/build/
+dist/
+*.dmg
+*.exe
+out.json
+.DS_Store

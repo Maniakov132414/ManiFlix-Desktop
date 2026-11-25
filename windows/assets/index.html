@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>ManiFlix Desktop</title>
+  <link rel="stylesheet" href="/assets/styles.css" />
+  <script src="/assets/hls.min.js"></script>
+</head>
+<body>
+  <div id="ambientBackdrop" class="ambient-backdrop"></div>
+
+  <header class="titlebar">
+    <div class="titlebar-left">
+      <div class="brand-badge">M</div>
+      <div class="brand-text">
+        <span class="brand-name">ManiFlix</span>
+        <span id="winSizePill" class="win-pill">410×820</span>
+      </div>
+    </div>
+    <div class="titlebar-actions">
+      <button id="btnFormToggle" class="tb-btn" title="Chuyển dạng Điện thoại / Màn hình">🖥️ Dạng Màn Hình (1240×800)</button>
+      <button id="btnPinToggle" class="tb-btn" title="Ghim cửa sổ luôn nổi">📌 Ghim nổi</button>
+      <button id="btnFullscreen" class="tb-btn" title="Toàn màn hình">⛶ Toàn màn hình</button>
+      <button id="btnAccount" class="tb-btn tb-account" title="Tài khoản">👤</button>
+    </div>
+  </header>
+
+  <div id="appShell" class="app-shell">
+    <aside id="sidebar" class="sidebar">
+      <div class="sidebar-nav">
+        <button class="nav-item active" data-tab="discover"><span class="nav-ico">▶</span><span>Trang chủ</span></button>
+        <button class="nav-item" data-tab="search"><span class="nav-ico">⌕</span><span>Tìm kiếm</span></button>
+        <button class="nav-item" data-tab="library"><span class="nav-ico">🔖</span><span>Tủ phim</span></button>
+        <button class="nav-item" data-tab="settings"><span class="nav-ico">⚙</span><span>Cài đặt</span></button>
+      </div>
+      <div class="sidebar-footer">
+        <div id="sidebarUserCard" class="sidebar-user-card">
+          <div class="su-title">Khách</div>
+          <div class="su-sub">Đăng nhập để đồng bộ</div>
+        </div>
+        <div class="sidebar-runtime">Rust Native • tao + wry</div>
+      </div>
+    </aside>
+
+    <main id="mainContent" class="main-content"></main>
+  </div>
+
+  <nav id="bottomNav" class="bottom-nav">
+    <button class="bnav-item active" data-tab="discover"><span class="bnav-ico">▶</span><span>Trang chủ</span></button>
+    <button class="bnav-item" data-tab="search"><span class="bnav-ico">⌕</span><span>Tìm kiếm</span></button>
+    <button class="bnav-item" data-tab="library"><span class="bnav-ico">🔖</span><span>Tủ phim</span></button>
+    <button class="bnav-item" data-tab="settings"><span class="bnav-ico">⚙</span><span>Cài đặt</span></button>
+  </nav>
+
+  <div id="toastBanner" class="toast-banner hidden"></div>
+  <div id="modalRoot"></div>
+  <div id="playerRoot"></div>
+
+  <script src="/assets/app.js"></script>
+</body>
+</html>

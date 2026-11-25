@@ -1,0 +1,416 @@
+import SwiftUI
+import AppKit
+
+extension Color {
+    init(hex: String) {
+        let cleaned = hex.trimmingCharacters(in: .whitespacesAndNewlines)
+            .replacingOccurrences(of: "#", with: "")
+            .uppercased()
+        var value: UInt64 = 0
+        Scanner(string: cleaned).scanHexInt64(&value)
+        switch cleaned.count {
+        case 6:
+            let r = Double((value & 0xFF0000) >> 16) / 255.0
+            let g = Double((value & 0x00FF00) >> 8) / 255.0
+            let b = Double(value & 0x0000FF) / 255.0
+            self.init(.sRGB, red: r, green: g, blue: b, opacity: 1.0)
+        default:
+            self.init(.sRGB, red: 0.98, green: 0.176, blue: 0.282, opacity: 1.0)
+        }
+    }
+
+    var luminance: Double {
+        let nsColor = NSColor(self).usingColorSpace(.sRGB) ?? NSColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        nsColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return 0.2126 * Double(r) + 0.7152 * Double(g) + 0.0722 * Double(b)
+    }
+
+    func toHexString() -> String {
+        let nsColor = NSColor(self).usingColorSpace(.sRGB) ?? NSColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        nsColor.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(
+            format: "#%02X%02X%02X",
+            Int(round(min(max(r, 0), 1) * 255)),
+            Int(round(min(max(g, 0), 1) * 255)),
+            Int(round(min(max(b, 0), 1) * 255))
+        )
+    }
+}
+
+enum AccentPreset: String, CaseIterable, Identifiable {
+    case crimson, amber, sky, violet, emerald
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .crimson: return "Đỏ"
+        case .amber: return "Cam"
+        case .sky: return "Xanh dương"
+        case .violet: return "Tím"
+        case .emerald: return "Xanh lá"
+        }
+    }
+
+    var hexString: String {
+        switch self {
+        case .crimson: return "#FA2D48"
+        case .amber: return "#FF6448"
+        case .sky: return "#0A84FF"
+        case .violet: return "#5E5CE6"
+        case .emerald: return "#30D158"
+        }
+    }
+
+    var color: Color { Color(hex: hexString) }
+}
+
+enum GlassUIStyle: String, CaseIterable, Identifiable {
+    case adaptive, liquid, legacy
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .adaptive: return "Tự động (Liquid Glass)"
+        case .liquid: return "Trong suốt"
+        case .legacy: return "Đơn giản"
+        }
+    }
+
+    var shouldUseLiquidGlass: Bool {
+        switch self {
+        case .legacy: return false
+        case .adaptive, .liquid:
+            if #available(macOS 26.0, *) { return true }
+            return false
+        }
+    }
+}
+
+@MainActor
+enum ManiFlixTheme {
+    static var accentColor: Color { AppPreferences.shared.currentAccentColor }
+
+    static func isLight(_ scheme: ColorScheme) -> Bool {
+        switch AppPreferences.shared.themeMode {
+        case .light: return true
+        case .dark, .oled: return false
+        case .system: return scheme == .light
+        case .custom: return Color(hex: AppPreferences.shared.customBgHex).luminance > 0.55
+        }
+    }
+
+    static func background(scheme: ColorScheme) -> Color {
+        switch AppPreferences.shared.themeMode {
+        case .oled: return .black
+        case .dark: return Color(red: 0.071, green: 0.071, blue: 0.078)
+        case .light: return Color(red: 0.957, green: 0.957, blue: 0.969)
+        case .system: return scheme == .light ? Color(red: 0.957, green: 0.957, blue: 0.969) : Color(red: 0.071, green: 0.071, blue: 0.078)
+        case .custom: return Color(hex: AppPreferences.shared.customBgHex)
+        }
+    }
+
+    static func surface(scheme: ColorScheme) -> Color {
+        switch AppPreferences.shared.themeMode {
+        case .oled: return Color(red: 0.10, green: 0.10, blue: 0.11)
+        case .dark: return Color(red: 0.125, green: 0.125, blue: 0.141)
+        case .light: return .white
+        case .system: return scheme == .light ? .white : Color(red: 0.125, green: 0.125, blue: 0.141)
+        case .custom: return Color(hex: AppPreferences.shared.customSurfaceHex)
+        }
+    }
+
+    static func primaryText(_ scheme: ColorScheme) -> Color {
+        isLight(scheme) ? Color(red: 0.09, green: 0.09, blue: 0.11) : .white
+    }
+
+    static func secondaryText(_ scheme: ColorScheme) -> Color {
+        isLight(scheme) ? Color(red: 0.36, green: 0.36, blue: 0.42) : Color(white: 0.65)
+    }
+
+    static func cardStroke(_ scheme: ColorScheme) -> Color {
+        isLight(scheme) ? Color.black.opacity(0.09) : Color.white.opacity(0.11)
+    }
+
+    static func cardFill(_ scheme: ColorScheme) -> Color {
+        isLight(scheme) ? Color.black.opacity(0.045) : Color.white.opacity(0.075)
+    }
+
+    static func adaptiveGridColumnCount(width: CGFloat) -> Int {
+        if width >= 1120 { return 6 }
+        if width >= 860 { return 5 }
+        if width >= 620 { return 4 }
+        return AppPreferences.shared.gridColumnsPhone
+    }
+}
+
+struct AdaptiveGlassCardModifier: ViewModifier {
+    let cornerRadius: CGFloat
+    let interactive: Bool
+    let tint: Color?
+    @ObservedObject private var prefs = AppPreferences.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *), prefs.glassStyle.shouldUseLiquidGlass {
+            if let tint = tint {
+                content
+                    .glassEffect(.regular.tint(tint.opacity(0.28)).interactive(interactive), in: .rect(cornerRadius: cornerRadius))
+            } else {
+                content
+                    .glassEffect(.regular.interactive(interactive), in: .rect(cornerRadius: cornerRadius))
+            }
+        } else {
+            fallbackCard(content)
+        }
+        #else
+        fallbackCard(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func fallbackCard(_ content: Content) -> some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .fill(tint != nil ? tint!.opacity(0.20) : ManiFlixTheme.cardFill(colorScheme))
+                    .background(
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                    )
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                    .strokeBorder(tint != nil ? tint!.opacity(0.32) : ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.6)
+            )
+    }
+}
+
+struct AdaptiveGlassCapsuleModifier: ViewModifier {
+    let interactive: Bool
+    let tint: Color?
+    @ObservedObject private var prefs = AppPreferences.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        #if compiler(>=6.2)
+        if #available(macOS 26.0, *), prefs.glassStyle.shouldUseLiquidGlass {
+            if let tint = tint {
+                content
+                    .glassEffect(.regular.tint(tint.opacity(0.78)).interactive(interactive), in: .capsule)
+            } else {
+                content
+                    .glassEffect(.regular.interactive(interactive), in: .capsule)
+            }
+        } else {
+            fallbackCapsule(content)
+        }
+        #else
+        fallbackCapsule(content)
+        #endif
+    }
+
+    @ViewBuilder
+    private func fallbackCapsule(_ content: Content) -> some View {
+        content
+            .background(
+                Capsule()
+                    .fill(tint != nil ? tint!.opacity(0.88) : ManiFlixTheme.cardFill(colorScheme))
+                    .background(Capsule().fill(.ultraThinMaterial))
+            )
+            .overlay(
+                Capsule()
+                    .strokeBorder(tint != nil ? tint!.opacity(0.30) : ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.6)
+            )
+    }
+}
+
+extension View {
+    func adaptiveGlassCard(cornerRadius: CGFloat = 14, interactive: Bool = false, tint: Color? = nil) -> some View {
+        modifier(AdaptiveGlassCardModifier(cornerRadius: cornerRadius, interactive: interactive, tint: tint))
+    }
+
+    func adaptiveGlassCapsule(interactive: Bool = true, tint: Color? = nil) -> some View {
+        modifier(AdaptiveGlassCapsuleModifier(interactive: interactive, tint: tint))
+    }
+
+    func readContainerWidth(_ width: Binding<CGFloat>) -> some View {
+        background(
+            GeometryReader { geo in
+                Color.clear.preference(key: ContainerWidthPreferenceKey.self, value: geo.size.width)
+            }
+        )
+        .onPreferenceChange(ContainerWidthPreferenceKey.self) { newWidth in
+            if newWidth > 0 && abs(width.wrappedValue - newWidth) > 1 {
+                width.wrappedValue = newWidth
+            }
+        }
+    }
+}
+
+private struct ContainerWidthPreferenceKey: PreferenceKey {
+    static var defaultValue: CGFloat = 1000
+    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
+        value = nextValue()
+    }
+}
+
+struct AmbientArtworkBackground: View {
+    let url: URL?
+    var height: CGFloat = 390
+    @ObservedObject private var prefs = AppPreferences.shared
+    @Environment(\.colorScheme) private var colorScheme
+
+    var body: some View {
+        if prefs.ambientArtworkEnabled, let artworkURL = url {
+            let light = ManiFlixTheme.isLight(colorScheme)
+            let bg = ManiFlixTheme.background(scheme: colorScheme)
+            ZStack(alignment: .top) {
+                CachedAsyncImage(url: artworkURL)
+                    .frame(maxWidth: .infinity)
+                    .frame(height: height)
+                    .blur(radius: 62)
+                    .saturation(light ? 1.12 : 1.28)
+                    .opacity(light ? 0.24 : 0.40)
+                    .overlay(
+                        LinearGradient(
+                            stops: [
+                                .init(color: bg.opacity(light ? 0.28 : 0.0), location: 0.0),
+                                .init(color: bg.opacity(light ? 0.65 : 0.42), location: 0.58),
+                                .init(color: bg, location: 1.0)
+                            ],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                    )
+                    .ignoresSafeArea(edges: .top)
+            }
+            .allowsHitTesting(false)
+        }
+    }
+}
+
+struct WrappingFlowLayout: Layout {
+    var horizontalSpacing: CGFloat = 8
+    var verticalSpacing: CGFloat = 8
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let maxWidth = proposal.width ?? 480
+        var curX: CGFloat = 0
+        var curY: CGFloat = 0
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: maxWidth, height: nil))
+            if curX > 0 && curX + size.width > maxWidth {
+                curX = 0
+                curY += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            curX += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+        return CGSize(width: maxWidth, height: curY + rowHeight)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        var curX = bounds.minX
+        var curY = bounds.minY
+        var rowHeight: CGFloat = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(ProposedViewSize(width: bounds.width, height: nil))
+            if curX > bounds.minX && curX + size.width > bounds.maxX + 0.5 {
+                curX = bounds.minX
+                curY += rowHeight + verticalSpacing
+                rowHeight = 0
+            }
+            subview.place(
+                at: CGPoint(x: curX, y: curY),
+                proposal: ProposedViewSize(width: min(size.width, bounds.width), height: size.height)
+            )
+            curX += size.width + horizontalSpacing
+            rowHeight = max(rowHeight, size.height)
+        }
+    }
+}
+
+final class ImageCacheStore {
+    static let shared = ImageCacheStore()
+    private let cache = NSCache<NSString, NSImage>()
+    private init() {
+        cache.countLimit = 280
+        cache.totalCostLimit = 128 * 1024 * 1024
+    }
+    func image(for url: URL) -> NSImage? { cache.object(forKey: url.absoluteString as NSString) }
+    func store(_ image: NSImage, for url: URL) { cache.setObject(image, forKey: url.absoluteString as NSString) }
+}
+
+struct CachedAsyncImage: View {
+    let url: URL?
+    var contentMode: ContentMode = .fill
+    @Environment(\.colorScheme) private var colorScheme
+    @State private var loadedImage: NSImage?
+    @State private var failed = false
+
+    var body: some View {
+        let placeholderColor = ManiFlixTheme.isLight(colorScheme) ? Color.black.opacity(0.06) : Color(white: 0.09)
+        Group {
+            if let nsImg = loadedImage {
+                if contentMode == .fill {
+                    Color.clear
+                        .overlay(
+                            Image(nsImage: nsImg)
+                                .resizable()
+                                .scaledToFill()
+                        )
+                        .clipped()
+                } else {
+                    Image(nsImage: nsImg)
+                        .resizable()
+                        .aspectRatio(contentMode: contentMode)
+                }
+            } else if failed {
+                ZStack {
+                    placeholderColor
+                    Image(systemName: "film")
+                        .font(.callout)
+                        .foregroundColor(ManiFlixTheme.secondaryText(colorScheme))
+                }
+            } else {
+                placeholderColor
+            }
+        }
+        .task(id: url) {
+            await load()
+        }
+    }
+
+    private func load() async {
+        failed = false
+        guard let url = url else { failed = true; return }
+        if let cached = ImageCacheStore.shared.image(for: url) {
+            loadedImage = cached
+            return
+        }
+        do {
+            var request = URLRequest(url: url)
+            request.timeoutInterval = 15
+            request.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await URLSession.shared.data(for: request)
+            if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+                failed = true; return
+            }
+            if let img = NSImage(data: data) {
+                ImageCacheStore.shared.store(img, for: url)
+                await MainActor.run { loadedImage = img }
+            } else {
+                failed = true
+            }
+        } catch {
+            failed = true
+        }
+    }
+}

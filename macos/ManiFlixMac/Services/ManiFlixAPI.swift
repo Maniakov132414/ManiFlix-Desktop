@@ -1,0 +1,201 @@
+import Foundation
+
+enum APIError: LocalizedError {
+    case invalidURL
+    case badStatus(Int, String)
+    case decodingFailed(String)
+
+    var errorDescription: String? {
+        switch self {
+        case .invalidURL: return "URL máy chủ không hợp lệ."
+        case .badStatus(let code, let msg): return "Lỗi máy chủ HTTP \(code): \(msg)"
+        case .decodingFailed(let detail): return "Lỗi giải mã dữ liệu: \(detail)"
+        }
+    }
+}
+
+final class ManiFlixAPI {
+    static let shared = ManiFlixAPI()
+    private let session: URLSession
+    private let decoder = JSONDecoder()
+    private let baseURL = "https://phim.maniakov.bond"
+
+    private init() {
+        let config = URLSessionConfiguration.default
+        config.timeoutIntervalForRequest = 18
+        config.timeoutIntervalForResource = 35
+        self.session = URLSession(configuration: config)
+    }
+
+    func cleanM3U8URL(from rawM3U8: String) -> URL? {
+        guard var comps = URLComponents(string: "\(baseURL)/api/clean-m3u8") else { return nil }
+        comps.queryItems = [URLQueryItem(name: "url", value: rawM3U8)]
+        return comps.url
+    }
+
+    private func request<T: Decodable>(
+        path: String,
+        method: String = "GET",
+        query: [URLQueryItem] = [],
+        body: [String: Any]? = nil,
+        token: String? = nil
+    ) async throws -> T {
+        guard var comps = URLComponents(string: "\(baseURL)\(path)") else { throw APIError.invalidURL }
+        if !query.isEmpty { comps.queryItems = query }
+        guard let url = comps.url else { throw APIError.invalidURL }
+
+        var req = URLRequest(url: url)
+        req.httpMethod = method
+        req.setValue("application/json", forHTTPHeaderField: "Accept")
+        req.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
+
+        if let token = token, !token.isEmpty {
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        if let body = body {
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.httpBody = try JSONSerialization.data(withJSONObject: body)
+        }
+
+        let (data, response) = try await session.data(for: req)
+        guard let http = response as? HTTPURLResponse else {
+            throw APIError.badStatus(0, "Không nhận được phản hồi HTTP")
+        }
+        guard (200..<300).contains(http.statusCode) else {
+            let msg = String(data: data, encoding: .utf8) ?? "Unknown error"
+            throw APIError.badStatus(http.statusCode, msg)
+        }
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            throw APIError.decodingFailed(error.localizedDescription)
+        }
+    }
+
+    func fetchMovies(page: Int = 1) async throws -> MoviesPageResponse {
+        try await request(path: "/api/movies", query: [URLQueryItem(name: "page", value: "\(page)")])
+    }
+
+    func fetchCategory(type: String, page: Int = 1) async throws -> CategoryPageResponse {
+        try await request(path: "/api/category", query: [URLQueryItem(name: "type", value: type), URLQueryItem(name: "page", value: "\(page)")])
+    }
+
+    func fetchGenre(slug: String, page: Int = 1) async throws -> CategoryPageResponse {
+        try await request(path: "/api/the-loai", query: [URLQueryItem(name: "slug", value: slug), URLQueryItem(name: "page", value: "\(page)")])
+    }
+
+    func searchMovies(query: String, page: Int = 1) async throws -> SearchResponse {
+        try await request(path: "/api/search", query: [URLQueryItem(name: "q", value: query), URLQueryItem(name: "page", value: "\(page)")])
+    }
+
+    func fetchMovieDetail(slug: String) async throws -> MovieDetailResponse {
+        let encoded = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        return try await request(path: "/api/movie/\(encoded)")
+    }
+
+    func fetchFranchise(slug: String) async throws -> FranchiseResponse {
+        try await request(path: "/api/franchise", query: [URLQueryItem(name: "slug", value: slug)])
+    }
+
+    func fetchAdsMarkers(slug: String, ep: String, titleHint: String = "") async throws -> AdsResponse {
+        let encodedSlug = slug.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? slug
+        let digitsOnly = ep.replacingOccurrences(of: "[^0-9]", with: "", options: .regularExpression)
+        let cleanEp = digitsOnly.isEmpty ? (ep.isEmpty ? "1" : ep) : String(Int(digitsOnly) ?? 1)
+        let encodedEp = cleanEp.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? "1"
+        var query: [URLQueryItem] = []
+        if !titleHint.isEmpty { query.append(URLQueryItem(name: "title", value: titleHint)) }
+        return try await request(path: "/api/ads/\(encodedSlug)/\(encodedEp)", query: query)
+    }
+
+    func login(username: String, password: String) async throws -> AuthResponse {
+        try await request(path: "/api/auth/login", method: "POST", body: ["username": username, "password": password])
+    }
+
+    func register(username: String, password: String, displayName: String) async throws -> AuthResponse {
+        try await request(path: "/api/auth/register", method: "POST", body: ["username": username, "password": password, "displayName": displayName])
+    }
+
+    func fetchMe(token: String) async throws -> MeResponse {
+        try await request(path: "/api/auth/me", token: token)
+    }
+
+    func fetchHistory(token: String) async throws -> HistoryResponse {
+        try await request(path: "/api/user/history", token: token)
+    }
+
+    func saveHistory(token: String, slug: String, name: String, poster: String, episodeIndex: Int, episodeName: String, currentTime: Double, duration: Double) async {
+        struct Ack: Codable { let success: Bool? }
+        let body: [String: Any] = [
+            "slug": slug, "name": name, "poster": poster,
+            "episodeIndex": episodeIndex, "episodeName": episodeName,
+            "currentTime": currentTime, "duration": duration
+        ]
+        _ = try? await request(path: "/api/user/history", method: "POST", body: body, token: token) as Ack
+    }
+
+    func deleteHistory(token: String, slug: String) async {
+        struct Ack: Codable { let success: Bool? }
+        _ = try? await request(path: "/api/user/history/delete", method: "POST", body: ["slug": slug], token: token) as Ack
+    }
+
+    func fetchFavorites(token: String) async throws -> FavoritesResponse {
+        try await request(path: "/api/user/favorites", token: token)
+    }
+
+    func toggleFavorite(token: String, movie: MovieDetail) async throws -> FavoritesResponse {
+        let body: [String: Any] = [
+            "slug": movie.slug, "name": movie.name, "poster": movie.poster_url ?? movie.thumb_url ?? "",
+            "year": movie.year?.value ?? 0, "quality": movie.quality ?? "HD", "lang": movie.lang ?? "Vietsub"
+        ]
+        return try await request(path: "/api/user/favorites/toggle", method: "POST", body: body, token: token)
+    }
+
+    func toggleFavoriteItem(token: String, item: MovieItem) async throws -> FavoritesResponse {
+        let body: [String: Any] = [
+            "slug": item.slug, "name": item.name, "poster": item.poster_url ?? item.thumb_url ?? "",
+            "year": item.year?.value ?? 0, "quality": item.quality ?? "HD", "lang": item.lang ?? "Vietsub"
+        ]
+        return try await request(path: "/api/user/favorites/toggle", method: "POST", body: body, token: token)
+    }
+
+    func saveUserTheme(token: String, presetId: String, accent: String, bg: String, surface: String) async throws {
+        struct ThemeSaveAck: Codable { let success: Bool? }
+        let body: [String: Any] = ["presetId": presetId, "accent": accent, "bg": bg, "surface": surface]
+        _ = try await request(path: "/api/user/theme", method: "POST", body: body, token: token) as ThemeSaveAck
+    }
+
+    func fetchNetStats() async throws -> NetStatsResponse {
+        try await request(path: "/api/net-stats")
+    }
+
+    func measureDownloadProbe(kb: Int = 256) async throws -> (mbps: Double, bytes: Int, pingMs: Double) {
+        guard let url = URL(string: "\(baseURL)/api/net-probe?kb=\(kb)") else { throw APIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.cachePolicy = .reloadIgnoringLocalCacheData
+        req.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
+        let start = CFAbsoluteTimeGetCurrent()
+        let (data, response) = try await session.data(for: req)
+        let elapsed = max(0.004, CFAbsoluteTimeGetCurrent() - start)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, "Probe error")
+        }
+        let mbps = (Double(data.count) * 8.0) / (elapsed * 1_000_000.0)
+        return (mbps, data.count, elapsed * 1000.0)
+    }
+
+    func measureUploadProbe(bytesCount: Int = 128 * 1024) async throws -> Double {
+        guard let url = URL(string: "\(baseURL)/api/net-up") else { throw APIError.invalidURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
+        req.httpBody = Data(repeating: 0x4D, count: bytesCount)
+        let start = CFAbsoluteTimeGetCurrent()
+        let (_, response) = try await session.data(for: req)
+        let elapsed = max(0.004, CFAbsoluteTimeGetCurrent() - start)
+        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
+            throw APIError.badStatus(http.statusCode, "Upload probe error")
+        }
+        return (Double(bytesCount) * 8.0) / (elapsed * 1_000_000.0)
+    }
+}

@@ -1,0 +1,142 @@
+name: Build ManiFlix Desktop (Windows + macOS)
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Native Rust (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows
+
+      - name: Build ManiFlix.exe (Release)
+        shell: pwsh
+        run: |
+          Set-Location windows
+          cargo build --release
+          New-Item -ItemType Directory -Force -Path ../dist | Out-Null
+          Copy-Item target/release/ManiFlix.exe ../dist/ManiFlix.exe -Force
+
+      - name: Run Self-Test Hardware & Binary Verification
+        shell: pwsh
+        run: |
+          $p = Start-Process -FilePath ./dist/ManiFlix.exe -ArgumentList "--self-test", "out.json" -Wait -PassThru -NoNewWindow
+          if ($p.ExitCode -ne 0) { throw "Self-test exited with $($p.ExitCode)" }
+          Get-Content out.json
+          $raw = Get-Content out.json -Raw
+          if (-not $raw.Contains("SELF_TEST_OK")) { throw "Missing SELF_TEST_OK" }
+
+      - name: Upload Windows Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ManiFlix-Windows
+          path: dist/ManiFlix.exe
+          retention-days: 30
+
+  build-macos:
+    name: Build macOS 26 Liquid Glass (.dmg)
+    runs-on: macos-26
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Select Xcode 26 & Install XcodeGen
+        run: |
+          XCODE_APP=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "$XCODE_APP" ]; then
+            sudo xcode-select -s "$XCODE_APP/Contents/Developer"
+          fi
+          xcodebuild -version
+          swift --version
+          if ! command -v xcodegen >/dev/null 2>&1; then
+            brew install xcodegen
+          fi
+          xcodegen --version
+
+      - name: Normalize AppIcon to 1024x1024 opaque PNG
+        run: |
+          ICON_SRC="macos/ManiFlixMac/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+          sips -s format bmp "$ICON_SRC" --out /tmp/appicon.bmp
+          sips -s format png -z 1024 1024 /tmp/appicon.bmp --out "$ICON_SRC"
+          sips -g pixelWidth -g pixelHeight -g hasAlpha "$ICON_SRC"
+
+      - name: Generate Xcode Project & Build Release ManiFlix.app
+        run: |
+          cd macos
+          xcodegen generate
+          xcodebuild archive \
+            -project ManiFlixMac.xcodeproj \
+            -scheme ManiFlixMac \
+            -configuration Release \
+            -destination 'generic/platform=macOS' \
+            -derivedDataPath /tmp/dd-mac \
+            -archivePath /tmp/ManiFlixMac.xcarchive \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES
+
+      - name: Package ManiFlix.app into ManiFlix-macOS.dmg
+        run: |
+          mkdir -p dist /tmp/dmg-stage
+          cp -R /tmp/ManiFlixMac.xcarchive/Products/Applications/ManiFlix.app /tmp/dmg-stage/ManiFlix.app
+          codesign --force --deep --sign - /tmp/dmg-stage/ManiFlix.app || true
+          ln -s /Applications /tmp/dmg-stage/Applications
+          hdiutil create -volname "ManiFlix" -srcfolder /tmp/dmg-stage -ov -format UDZO dist/ManiFlix-macOS.dmg
+          ls -lh dist/ManiFlix-macOS.dmg
+
+      - name: Upload macOS Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ManiFlix-macOS
+          path: dist/ManiFlix-macOS.dmg
+          retention-days: 30
+
+  release:
+    name: Publish GitHub Release v1.0.0
+    needs: [ build-windows, build-macos ]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download Built Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Verify Release Assets
+        run: |
+          ls -lh release-assets
+          test -s release-assets/ManiFlix.exe
+          test -s release-assets/ManiFlix-macOS.dmg
+
+      - name: Publish Release v1.0.0
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v1.0.0
+          name: ManiFlix Desktop v1.0.0
+          body: |
+            ## ManiFlix Desktop v1.0.0
+            - **Windows (`ManiFlix.exe`)**: Native Rust (`tao` + `wry` + `sysinfo`) — khởi động mặc định Dạng Điện thoại (`410×820`), chuyển trực tiếp sang Dạng Màn Hình (`1240×800`), Ghim nổi, Toàn màn hình, phát HLS qua `hls.min.js` + TheIntroDB Skip Intro, xem trước Taurus & Kiểm tra mạng/thiết bị `sysinfo`.
+            - **macOS (`ManiFlix-macOS.dmg`)**: Native SwiftUI macOS 26 Liquid Glass (`NavigationSplitView` Sidebar, chuyển trực tiếp `📱 Chế độ Điện thoại 400×800` với thanh capsule Liquid Glass nổi <-> `🖥️ Chế độ Máy tính 1200×780`, `📌 Ghim nổi`, `AVPlayer` Spatial Audio + TheIntroDB, Giao diện Taurus Live Preview & Kiểm tra mạng/thiết bị `sysctlbyname` + SwiftUI `Canvas`).
+          files: |
+            release-assets/ManiFlix.exe
+            release-assets/ManiFlix-macOS.dmg
+          overwrite_files: true
+          make_latest: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
