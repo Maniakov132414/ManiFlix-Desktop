@@ -108,7 +108,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub Release v1.0.1
+    name: Publish GitHub Release v1.1.0
     needs: [ build-windows, build-macos ]
     runs-on: ubuntu-latest
     steps:
@@ -124,16 +124,17 @@ jobs:
           test -s release-assets/ManiFlix.exe
           test -s release-assets/ManiFlix-macOS.dmg
 
-      - name: Publish Release v1.0.1
+      - name: Publish Release v1.1.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.1
-          name: ManiFlix Desktop v1.0.1
+          tag_name: v1.1.0
+          name: ManiFlix Desktop v1.1.0
           body: |
-            ## ManiFlix Desktop v1.0.1
-            - Tích hợp biểu tượng chính thức ManiFlix vào ứng dụng Windows (`ManiFlix.exe`) và macOS (`ManiFlix-macOS.dmg`).
-            - Khởi động mặc định giao diện màn hình rộng (`1180×760` Windows, `1200×780` macOS), tự động thích ứng khi thu nhỏ cửa sổ.
-            - Sửa lỗi hiển thị poster/banner phim (`upload/vod/`), đồng bộ 100% icon SVG/SF Symbols sạch đẹp không emoji trên các nút.
+            ## ManiFlix Desktop v1.1.0
+            - Nâng cấp Speedtest chính xác đa luồng (Ping/Jitter ấm qua Cloudflare Edge + tải xuống 4 luồng + tải lên 2 luồng, mặc định tắt Live Probe).
+            - Nâng cấp trình phát phim trên Windows & macOS: thanh điều khiển tự ẩn khi rảnh, ngăn kéo danh sách tập & đổi nguồn trong trình phát, phím tắt tiện lợi (`Space`, `M`, mũi tên tua ±10 giây).
+            - Gỡ bỏ hoàn toàn nút Ghim nổi, bổ sung phân trang "Xem thêm", phát trực tiếp từ Hero, lọc tìm tập phim và đầy đủ thông tin diễn viên/đạo diễn/quốc gia.
+            - Tối ưu hiệu năng backend Rust Windows (connection pooling & cache thống kê hệ thống).
           files: |
             release-assets/ManiFlix.exe
             release-assets/ManiFlix-macOS.dmg

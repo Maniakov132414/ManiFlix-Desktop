@@ -8,7 +8,10 @@ struct CatalogSearchView: View {
     @State private var query: String = ""
     @State private var results: [MovieItem] = []
     @State private var isSearching = false
+    @State private var isLoadingMore = false
     @State private var hasSearched = false
+    @State private var currentPage = 1
+    @State private var hasMore = false
     @State private var debounceTask: Task<Void, Never>?
 
     private let suggestions = ["Hành động", "Khoa học viễn tưởng", "Hình sự", "Tâm lý", "Hoạt hình", "Kinh dị"]
@@ -55,7 +58,31 @@ struct CatalogSearchView: View {
                         }
                     }
                     .padding(.horizontal, 18)
-                    .padding(.bottom, containerWidth < 700 ? 94 : 32)
+
+                    if hasMore {
+                        HStack {
+                            Spacer()
+                            Button {
+                                Task { await loadMoreResults() }
+                            } label: {
+                                HStack(spacing: 8) {
+                                    if isLoadingMore { ProgressView().scaleEffect(0.75) }
+                                    else { Image(systemName: "plus.circle") }
+                                    Text(isLoadingMore ? "Đang tải..." : "Xem thêm")
+                                }
+                                .font(.subheadline.weight(.semibold))
+                                .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
+                                .padding(.horizontal, 20).padding(.vertical, 10)
+                            }
+                            .buttonStyle(.plain)
+                            .adaptiveGlassCapsule(interactive: true)
+                            .disabled(isLoadingMore)
+                            Spacer()
+                        }
+                        .padding(.top, 8)
+                    }
+
+                    Spacer().frame(height: containerWidth < 700 ? 94 : 32)
                 }
             }
             .padding(.vertical, 12)
@@ -71,19 +98,51 @@ struct CatalogSearchView: View {
     private func performSearch(immediate: Bool) {
         debounceTask?.cancel()
         let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmed.isEmpty else { results = []; hasSearched = false; return }
+        guard !trimmed.isEmpty else {
+            results = []
+            hasSearched = false
+            hasMore = false
+            currentPage = 1
+            return
+        }
 
         debounceTask = Task {
             if !immediate { try? await Task.sleep(nanoseconds: 320_000_000) }
             guard !Task.isCancelled else { return }
             isSearching = true
+            currentPage = 1
             if let res = try? await ManiFlixAPI.shared.searchMovies(query: trimmed, page: 1) {
-                self.results = res.items ?? []
+                let items = res.items ?? []
+                self.results = items
+                self.hasMore = res.hasMore ?? (items.count >= 12)
             } else {
                 self.results = []
+                self.hasMore = false
             }
             self.hasSearched = true
             isSearching = false
         }
+    }
+
+    private func loadMoreResults() async {
+        let trimmed = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !isLoadingMore, hasMore else { return }
+        isLoadingMore = true
+        let nextPage = currentPage + 1
+        if let res = try? await ManiFlixAPI.shared.searchMovies(query: trimmed, page: nextPage) {
+            let incoming = res.items ?? []
+            let existing = Set(results.map(\.slug))
+            let fresh = incoming.filter { !existing.contains($0.slug) }
+            if fresh.isEmpty {
+                hasMore = false
+            } else {
+                results.append(contentsOf: fresh)
+                currentPage = nextPage
+                hasMore = res.hasMore ?? !fresh.isEmpty
+            }
+        } else {
+            hasMore = false
+        }
+        isLoadingMore = false
     }
 }

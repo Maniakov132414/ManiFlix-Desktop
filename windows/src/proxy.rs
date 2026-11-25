@@ -1,8 +1,23 @@
+use std::sync::OnceLock;
 use std::time::Duration;
 use wry::http::{header, Request, Response, StatusCode};
 
 const REMOTE_BASE: &str = "https://phim.maniakov.bond";
-const DESKTOP_USER_AGENT: &str = "ManiFlixDesktop-Rust/1.0";
+const DESKTOP_USER_AGENT: &str = "ManiFlixDesktop-Rust/1.1";
+
+static HTTP_AGENT: OnceLock<ureq::Agent> = OnceLock::new();
+
+fn http_agent() -> &'static ureq::Agent {
+    HTTP_AGENT.get_or_init(|| {
+        ureq::AgentBuilder::new()
+            .timeout_connect(Duration::from_secs(10))
+            .timeout_read(Duration::from_secs(25))
+            .timeout_write(Duration::from_secs(20))
+            .max_idle_connections(16)
+            .max_idle_connections_per_host(8)
+            .build()
+    })
+}
 
 pub fn proxy_api_request(req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     let uri = req.uri();
@@ -13,11 +28,7 @@ pub fn proxy_api_request(req: &Request<Vec<u8>>) -> Response<Vec<u8>> {
     let target_url = format!("{}{}", REMOTE_BASE, path_and_query);
     let method = req.method().as_str();
 
-    let agent = ureq::AgentBuilder::new()
-        .timeout_connect(Duration::from_secs(10))
-        .timeout_read(Duration::from_secs(25))
-        .timeout_write(Duration::from_secs(20))
-        .build();
+    let agent = http_agent();
 
     let mut ureq_req = agent
         .request(method, &target_url)

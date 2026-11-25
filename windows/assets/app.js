@@ -1,4 +1,6 @@
 (() => {
+  const APP_VERSION = '1.1.0';
+
   const THEME_PRESETS = [
     { id: 'apple-dark', name: 'Apple Music Tối', mode: 'dark', accent: '#FA2D48', bg: '#121214', surface: '#1C1C1E' },
     { id: 'pure-light', name: 'Trắng Tinh Khôi', mode: 'light', accent: '#FA2D48', bg: '#F4F4F7', surface: '#FFFFFF' },
@@ -37,12 +39,14 @@
   function svgIcon(name, size = 14) {
     const paths = {
       play: '<polygon points="6 3 20 12 6 21 6 3" fill="currentColor" stroke="none"/>',
+      pause: '<rect x="6" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/><rect x="14" y="4" width="4" height="16" rx="1" fill="currentColor" stroke="none"/>',
       check: '<polyline points="20 6 9 17 4 12"/>',
       plus: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
       bookmark: '<path d="m19 21-7-4-7 4V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2v16z"/>',
       eyeOff: '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>',
       back: '<line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/>',
       forward: '<line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>',
+      chevLeft: '<polyline points="15 18 9 12 15 6"/>',
       chevRight: '<polyline points="9 18 15 12 9 6"/>',
       chevUp: '<polyline points="18 15 12 9 6 15"/>',
       chevDown: '<polyline points="6 9 12 15 18 9"/>',
@@ -50,9 +54,23 @@
       close: '<line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>',
       prev: '<polygon points="19 20 9 12 19 4 19 20" fill="currentColor"/><line x1="5" y1="19" x2="5" y2="5"/>',
       next: '<polygon points="5 4 15 12 5 20 5 4" fill="currentColor"/><line x1="19" y1="5" x2="19" y2="19"/>',
-      user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>'
+      user: '<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/>',
+      info: '<circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/>',
+      vol2: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/>',
+      volX: '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>',
+      replay10: '<path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/>',
+      forward10: '<path d="M21 12a9 9 0 1 1-3-6.7L21 8"/><path d="M21 3v5h-5"/>',
+      pip: '<rect x="3" y="5" width="18" height="14" rx="2"/><rect x="12" y="11" width="7" height="5" rx="1" fill="currentColor" stroke="none"/>',
+      fullscreen: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
+      unfullscreen: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
+      list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
+      refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'
     };
     return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">${paths[name] || ''}</svg>`;
+  }
+
+  function safeJsonParse(raw, fallback) {
+    try { return JSON.parse(raw); } catch { return fallback; }
   }
 
   const state = {
@@ -63,6 +81,7 @@
     detailRelated: [],
     selectedServerIdx: 0,
     franchiseExpanded: true,
+    epFilter: '',
     settingsSubPage: 'main',
     librarySeg: 'history',
     category: 'all',
@@ -72,13 +91,23 @@
     singleMovies: [],
     animeMovies: [],
     filteredMovies: [],
+    discoverPage: 1,
+    discoverHasMore: false,
+    discoverLoadingMore: false,
+    categoryPage: 1,
+    categoryHasMore: false,
+    categoryLoadingMore: false,
     searchQuery: '',
     searchResults: [],
+    searchPage: 1,
+    searchHasMore: false,
+    searchLoadingMore: false,
     token: localStorage.getItem('mf.token') || '',
     user: null,
-    history: JSON.parse(localStorage.getItem('mf.history') || '[]'),
+    history: safeJsonParse(localStorage.getItem('mf.history') || '[]', []),
+    epProgress: safeJsonParse(localStorage.getItem('mf.epProgress') || '{}', {}),
     favorites: [],
-    blocked: JSON.parse(localStorage.getItem('mf.blocked') || '[]'),
+    blocked: safeJsonParse(localStorage.getItem('mf.blocked') || '[]', []),
     prefs: Object.assign({
       themeMode: 'dark',
       presetId: 'apple-dark',
@@ -90,10 +119,11 @@
       autoCutAds: true,
       introSkip: 'button',
       autoNext: true
-    }, JSON.parse(localStorage.getItem('mf.prefs') || '{}')),
-    desktop: { width: 1180, height: 760, alwaysOnTop: false, fullscreen: false, maximized: false, layoutMode: 'desktop', monitorName: 'Primary', refreshRateHz: 60 },
+    }, safeJsonParse(localStorage.getItem('mf.prefs') || '{}', {})),
+    desktop: { width: 1180, height: 760, fullscreen: false, maximized: false, layoutMode: 'desktop', monitorName: 'Primary', refreshRateHz: 60 },
     monitor: {
-      liveProbe: true,
+      liveProbe: false,
+      testing: false,
       timer: null,
       sysinfo: null,
       netStats: null,
@@ -107,6 +137,9 @@
       serverCpuSeries: []
     }
   };
+
+  let heroAutoTimer = null;
+  let heroDirectBusy = false;
 
   // Delegated broken-image fallback (poster_url -> thumb_url -> SVG placeholder)
   document.addEventListener(
@@ -189,6 +222,16 @@
     return String(str ?? '').replace(/[&<>"']/g, m => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]));
   }
 
+  function formatTime(sec) {
+    if (!Number.isFinite(sec) || sec < 0) return '0:00';
+    const total = Math.floor(sec);
+    const h = Math.floor(total / 3600);
+    const m = Math.floor((total % 3600) / 60);
+    const s = total % 60;
+    const pad = n => String(n).padStart(2, '0');
+    return h > 0 ? `${h}:${pad(m)}:${pad(s)}` : `${m}:${pad(s)}`;
+  }
+
   function toast(msg) {
     const el = document.getElementById('toastBanner');
     el.textContent = msg;
@@ -220,11 +263,14 @@
     const shell = document.getElementById('appShell');
     shell.classList.toggle('desktop-mode', isDesktopLayout());
 
-    const btnPin = document.getElementById('btnPinToggle');
-    if (btnPin) btnPin.classList.toggle('active', !!state.desktop.alwaysOnTop);
-
     const btnFs = document.getElementById('btnFullscreen');
     if (btnFs) btnFs.classList.toggle('active', !!state.desktop.fullscreen);
+
+    const pFsBtn = document.getElementById('btnPlayerFullscreen');
+    if (pFsBtn) {
+      pFsBtn.innerHTML = svgIcon(state.desktop.fullscreen ? 'unfullscreen' : 'fullscreen', 15);
+      pFsBtn.classList.toggle('active', !!state.desktop.fullscreen);
+    }
   }
 
   window.__maniflixDesktopState = (snap) => {
@@ -255,6 +301,24 @@
   }
   function isFavorite(slug) {
     return state.favorites.some(f => f.slug === slug);
+  }
+
+  function recordEpisodeProgress(slug, epIndex, t, dur) {
+    if (!slug || !Number.isFinite(t) || t <= 0) return;
+    if (!state.epProgress[slug]) state.epProgress[slug] = {};
+    state.epProgress[slug][String(epIndex)] = {
+      t: Math.round(t),
+      d: Number.isFinite(dur) && dur > 0 ? Math.round(dur) : 0
+    };
+    localStorage.setItem('mf.epProgress', JSON.stringify(state.epProgress));
+  }
+
+  function getEpisodeProgressPct(slug, epIndex) {
+    const rec = state.epProgress[slug]?.[String(epIndex)];
+    if (rec && rec.d > 1) return Math.min(100, Math.round((rec.t / rec.d) * 100));
+    const h = state.history.find(x => x.slug === slug && x.episodeIndex === epIndex);
+    if (h && h.duration > 1) return Math.min(100, Math.round(((h.currentTime || 0) / h.duration) * 100));
+    return 0;
   }
 
   async function bootstrapAuth() {
@@ -305,6 +369,18 @@
     }
   }
 
+  function mergeUniqueMovies(existing, incoming) {
+    const seen = new Set(existing.map(m => m.slug));
+    const next = existing.slice();
+    for (const item of incoming || []) {
+      if (item && item.slug && !seen.has(item.slug)) {
+        seen.add(item.slug);
+        next.push(item);
+      }
+    }
+    return next;
+  }
+
   async function loadDiscover() {
     try {
       const [latest, series, single, anime] = await Promise.all([
@@ -314,6 +390,8 @@
         api('/api/category?type=hoat-hinh&page=1').catch(() => ({ items: [] }))
       ]);
       state.heroMovies = latest.items || [];
+      state.discoverPage = 1;
+      state.discoverHasMore = state.heroMovies.length >= 10;
       state.seriesMovies = series.items || [];
       state.singleMovies = single.items || [];
       state.animeMovies = anime.items || [];
@@ -326,23 +404,102 @@
     }
   }
 
+  async function loadMoreDiscover() {
+    if (state.discoverLoadingMore || !state.discoverHasMore) return;
+    state.discoverLoadingMore = true;
+    const mc = document.getElementById('mainContent');
+    const prevScroll = mc ? mc.scrollTop : 0;
+    render();
+    if (mc) mc.scrollTop = prevScroll;
+    try {
+      const nextPage = state.discoverPage + 1;
+      const data = await api(`/api/movies?page=${nextPage}`);
+      const items = data.items || [];
+      state.discoverPage = nextPage;
+      state.heroMovies = mergeUniqueMovies(state.heroMovies, items);
+      state.discoverHasMore = items.length >= 10;
+    } catch {
+      toast('Không tải thêm được phim');
+    } finally {
+      state.discoverLoadingMore = false;
+      const curScroll = mc ? mc.scrollTop : prevScroll;
+      render();
+      if (mc) mc.scrollTop = curScroll;
+    }
+  }
+
+  async function fetchCategoryPage(catId, page) {
+    if (catId.startsWith('cat:')) {
+      return api(`/api/category?type=${encodeURIComponent(catId.slice(4))}&page=${page}`);
+    }
+    return api(`/api/the-loai?slug=${encodeURIComponent(catId.slice(6))}&page=${page}`);
+  }
+
   async function selectCategory(catId) {
     state.category = catId;
+    state.categoryPage = 1;
+    state.categoryHasMore = false;
+    state.filteredMovies = [];
     if (catId === 'all') {
       render();
       return;
     }
     render();
     try {
-      let data;
-      if (catId.startsWith('cat:')) {
-        data = await api(`/api/category?type=${encodeURIComponent(catId.slice(4))}&page=1`);
-      } else {
-        data = await api(`/api/the-loai?slug=${encodeURIComponent(catId.slice(6))}&page=1`);
-      }
-      state.filteredMovies = data.items || [];
+      const data = await fetchCategoryPage(catId, 1);
+      const items = data.items || [];
+      state.filteredMovies = items;
+      state.categoryHasMore = items.length >= 10;
       render();
     } catch {}
+  }
+
+  async function loadMoreCategory() {
+    if (state.categoryLoadingMore || !state.categoryHasMore || state.category === 'all') return;
+    state.categoryLoadingMore = true;
+    const mc = document.getElementById('mainContent');
+    const prevScroll = mc ? mc.scrollTop : 0;
+    render();
+    if (mc) mc.scrollTop = prevScroll;
+    try {
+      const nextPage = state.categoryPage + 1;
+      const data = await fetchCategoryPage(state.category, nextPage);
+      const items = data.items || [];
+      state.categoryPage = nextPage;
+      state.filteredMovies = mergeUniqueMovies(state.filteredMovies, items);
+      state.categoryHasMore = items.length >= 10;
+    } catch {
+      toast('Không tải thêm được phim');
+    } finally {
+      state.categoryLoadingMore = false;
+      const curScroll = mc ? mc.scrollTop : prevScroll;
+      render();
+      if (mc) mc.scrollTop = curScroll;
+    }
+  }
+
+  async function directPlaySlug(slug) {
+    if (!slug || heroDirectBusy) return;
+    heroDirectBusy = true;
+    toast('Đang mở trình phát...');
+    try {
+      const res = await api(`/api/movie/${encodeURIComponent(slug)}`);
+      const movie = res.movie;
+      const servers = res.episodes || [];
+      if (!movie || !servers.length) {
+        openDetail(slug);
+        return;
+      }
+      const srv = servers[0] || { server_data: [] };
+      const hist = state.history.find(h => h.slug === movie.slug);
+      const epIdx = hist && Number.isInteger(hist.episodeIndex) && hist.episodeIndex < srv.server_data.length ? hist.episodeIndex : 0;
+      openPlayer(movie, servers, 0, epIdx);
+    } catch (e) {
+      toast('Không phát được trực tiếp: ' + e.message);
+      openDetail(slug);
+    } finally {
+      heroDirectBusy = false;
+    }
   }
 
   function movieCardHtml(m) {
@@ -361,9 +518,132 @@
       </div>`;
   }
 
+  function railSectionHtml(title, cardsHtml, railId) {
+    return `
+      <div class="section-hdr">
+        <h3 class="section-title">${esc(title)}</h3>
+        <div class="rail-nav-group">
+          <button class="rail-nav-btn" data-rail-target="${esc(railId)}" data-rail-dir="-1" title="Cuộn trái">${svgIcon('chevLeft', 14)}</button>
+          <button class="rail-nav-btn" data-rail-target="${esc(railId)}" data-rail-dir="1" title="Cuộn phải">${svgIcon('chevRight', 14)}</button>
+        </div>
+      </div>
+      <div class="rail" id="${esc(railId)}">${cardsHtml}</div>`;
+  }
+
+  function getFeaturedHeroList() {
+    return state.heroMovies.filter(m => !isBlocked(m.slug)).slice(0, 5);
+  }
+
+  function heroBannerHtml(featured) {
+    const hero = featured[state.heroIdx] || featured[0];
+    if (!hero) return '';
+    const bg = resolveImg(hero.thumb_url || hero.poster_url) || IMG_FALLBACK_SVG;
+    const bgFb = resolveImg(hero.poster_url) || '';
+    return `
+      <div class="hero-card" id="heroCard">
+        <img class="hero-bg" src="${esc(bg)}" data-fallback="${esc(bgFb)}" alt="" />
+        <div class="hero-grad"></div>
+        <button class="hero-nav hero-prev" id="btnHeroPrev" title="Phim trước">${svgIcon('chevLeft', 18)}</button>
+        <button class="hero-nav hero-next" id="btnHeroNext" title="Phim tiếp">${svgIcon('chevRight', 18)}</button>
+        <div class="hero-body">
+          <span class="hero-tag">PHIM MỚI / ${esc(hero.quality || 'HD')}</span>
+          <h2 class="hero-title">${esc(hero.name)}</h2>
+          <div class="hero-sub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
+          <div class="hero-actions">
+            <button class="btn-accent" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
+            <button class="btn-glass" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>Chi tiết</span></button>
+            <button class="btn-glass" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
+          </div>
+        </div>
+      </div>
+      <div class="hero-dots" id="heroDots">
+        ${featured.map((_, i) => `<button class="hero-dot ${i === state.heroIdx ? 'active' : ''}" data-hero-idx="${i}" aria-label="Slide ${i + 1}"></button>`).join('')}
+      </div>`;
+  }
+
+  function updateHeroDomInPlace() {
+    const featured = getFeaturedHeroList();
+    if (!featured.length) return;
+    if (state.heroIdx >= featured.length) state.heroIdx = 0;
+    const hero = featured[state.heroIdx];
+    const card = document.getElementById('heroCard');
+    const dots = document.getElementById('heroDots');
+    if (!card || !dots) return;
+    const wrap = document.createElement('div');
+    wrap.innerHTML = heroBannerHtml(featured);
+    const nextCard = wrap.querySelector('#heroCard');
+    const nextDots = wrap.querySelector('#heroDots');
+    if (nextCard) card.replaceWith(nextCard);
+    if (nextDots) dots.replaceWith(nextDots);
+    if (hero) setAmbientUrl(resolveImg(hero.poster_url || hero.thumb_url));
+    bindHeroEvents();
+  }
+
+  function bindHeroEvents() {
+    const mc = document.getElementById('mainContent');
+    if (!mc) return;
+    const btnPrev = document.getElementById('btnHeroPrev');
+    const btnNext = document.getElementById('btnHeroNext');
+    const featured = getFeaturedHeroList();
+    if (btnPrev && featured.length) {
+      btnPrev.onclick = () => {
+        state.heroIdx = (state.heroIdx - 1 + featured.length) % featured.length;
+        updateHeroDomInPlace();
+        resetHeroAutoTimer();
+      };
+    }
+    if (btnNext && featured.length) {
+      btnNext.onclick = () => {
+        state.heroIdx = (state.heroIdx + 1) % featured.length;
+        updateHeroDomInPlace();
+        resetHeroAutoTimer();
+      };
+    }
+    mc.querySelectorAll('[data-hero-idx]').forEach(el => {
+      el.onclick = () => {
+        state.heroIdx = parseInt(el.dataset.heroIdx, 10) || 0;
+        updateHeroDomInPlace();
+        resetHeroAutoTimer();
+      };
+    });
+    mc.querySelectorAll('[data-hero-play]').forEach(el => {
+      el.onclick = () => directPlaySlug(el.dataset.heroPlay);
+    });
+    mc.querySelectorAll('[data-open-slug]').forEach(el => {
+      el.onclick = () => openDetail(el.dataset.openSlug);
+    });
+    mc.querySelectorAll('[data-fav-slug]').forEach(el => {
+      el.onclick = async () => {
+        if (!state.token) { openAuthModal(); return; }
+        const m = state.heroMovies.find(x => x.slug === el.dataset.favSlug);
+        if (!m) return;
+        try {
+          const r = await api('/api/user/favorites/toggle', {
+            method: 'POST',
+            json: { slug: m.slug, name: m.name, poster: m.poster_url || m.thumb_url || '', year: m.year || 0, quality: m.quality || 'HD', lang: m.lang || 'Vietsub' }
+          });
+          if (Array.isArray(r.favorites)) state.favorites = r.favorites;
+          updateHeroDomInPlace();
+        } catch {}
+      };
+    });
+  }
+
+  function resetHeroAutoTimer() {
+    clearInterval(heroAutoTimer);
+    heroAutoTimer = setInterval(() => {
+      if (state.tab !== 'discover' || state.category !== 'all' || state.detailSlug || playerCtrl.isOpen()) return;
+      const featured = getFeaturedHeroList();
+      if (featured.length <= 1) return;
+      state.heroIdx = (state.heroIdx + 1) % featured.length;
+      updateHeroDomInPlace();
+    }, 7000);
+  }
+
   function renderDiscover() {
     const visibleHero = state.heroMovies.filter(m => !isBlocked(m.slug));
     const featured = visibleHero.slice(0, 5);
+    if (state.heroIdx >= featured.length) state.heroIdx = 0;
     const hero = featured[state.heroIdx] || featured[0];
     if (hero) setAmbientUrl(resolveImg(hero.poster_url || hero.thumb_url));
 
@@ -374,56 +654,36 @@
     html += `</div>`;
 
     if (state.category === 'all') {
-      if (hero) {
-        const bg = resolveImg(hero.thumb_url || hero.poster_url) || IMG_FALLBACK_SVG;
-        const bgFb = resolveImg(hero.poster_url) || '';
-        html += `
-          <div class="hero-card">
-            <img class="hero-bg" src="${esc(bg)}" data-fallback="${esc(bgFb)}" alt="" />
-            <div class="hero-grad"></div>
-            <div class="hero-body">
-              <span class="hero-tag">PHIM MỚI / ${esc(hero.quality || 'HD')}</span>
-              <h2 class="hero-title">${esc(hero.name)}</h2>
-              <div class="hero-sub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
-              <div class="hero-actions">
-                <button class="btn-accent" data-open-slug="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
-                <button class="btn-glass" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
-              </div>
-            </div>
-          </div>
-          <div class="hero-dots">
-            ${featured.map((_, i) => `<button class="hero-dot ${i === state.heroIdx ? 'active' : ''}" data-hero-idx="${i}" aria-label="Slide ${i + 1}"></button>`).join('')}
-          </div>`;
-      }
+      html += heroBannerHtml(featured);
 
       if (state.history.length > 0) {
-        html += `<div class="section-hdr"><h3 class="section-title">Tiếp tục xem</h3></div><div class="rail">`;
-        for (const h of state.history.slice(0, 12)) {
-          html += `
-            <div class="movie-card" data-slug="${esc(h.slug)}">
-              <div class="poster-wrap">
-                <img src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
-                <span class="poster-badge">${esc(h.episodeName || 'Tập 1')}</span>
-              </div>
-              <div class="movie-name">${esc(h.name || h.slug)}</div>
-              <div class="movie-meta">Xem tiếp</div>
-            </div>`;
-        }
-        html += `</div>`;
+        const histCards = state.history.slice(0, 12).map(h => `
+          <div class="movie-card" data-slug="${esc(h.slug)}">
+            <div class="poster-wrap">
+              <img src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
+              <span class="poster-badge">${esc(h.episodeName || 'Tập 1')}</span>
+            </div>
+            <div class="movie-name">${esc(h.name || h.slug)}</div>
+            <div class="movie-meta">Xem tiếp</div>
+          </div>`).join('');
+        html += railSectionHtml('Tiếp tục xem', histCards, 'railHistory');
       }
 
       const rails = [
-        ['Phim bộ mới', state.seriesMovies],
-        ['Phim lẻ tuyển chọn', state.singleMovies],
-        ['Hoạt hình & Anime', state.animeMovies]
+        ['Phim bộ mới', state.seriesMovies, 'railSeries'],
+        ['Phim lẻ tuyển chọn', state.singleMovies, 'railSingle'],
+        ['Hoạt hình & Anime', state.animeMovies, 'railAnime']
       ];
-      for (const [title, list] of rails) {
+      for (const [title, list, id] of rails) {
         const vis = (list || []).filter(m => !isBlocked(m.slug)).slice(0, 14);
         if (!vis.length) continue;
-        html += `<div class="section-hdr"><h3 class="section-title">${title}</h3></div><div class="rail">${vis.map(movieCardHtml).join('')}</div>`;
+        html += railSectionHtml(title, vis.map(movieCardHtml).join(''), id);
       }
 
       html += `<div class="section-hdr"><h3 class="section-title">Mới cập nhật</h3></div><div class="movie-grid">${visibleHero.map(movieCardHtml).join('')}</div>`;
+      if (state.discoverHasMore) {
+        html += `<div class="load-more-wrap"><button class="btn-glass" id="btnLoadMoreDiscover" ${state.discoverLoadingMore ? 'disabled' : ''}>${state.discoverLoadingMore ? 'Đang tải...' : 'Tải thêm phim'}</button></div>`;
+      }
     } else {
       const catLabel = CATEGORIES.find(c => c.id === state.category)?.label || '';
       const list = state.filteredMovies.filter(m => !isBlocked(m.slug));
@@ -431,6 +691,9 @@
       html += list.length
         ? `<div class="movie-grid">${list.map(movieCardHtml).join('')}</div>`
         : `<div class="glass-box">Đang tải danh sách...</div>`;
+      if (list.length && state.categoryHasMore) {
+        html += `<div class="load-more-wrap"><button class="btn-glass" id="btnLoadMoreCat" ${state.categoryLoadingMore ? 'disabled' : ''}>${state.categoryLoadingMore ? 'Đang tải...' : 'Tải thêm phim'}</button></div>`;
+      }
     }
 
     return html;
@@ -442,6 +705,7 @@
     state.detailFranchise = [];
     state.detailRelated = [];
     state.selectedServerIdx = 0;
+    state.epFilter = '';
     render();
     try {
       const [res, fr] = await Promise.all([
@@ -464,6 +728,31 @@
     }
   }
 
+  function formatPeopleList(val) {
+    if (Array.isArray(val)) return val.map(v => String(v || '').trim()).filter(Boolean).join(', ');
+    return String(val || '').trim();
+  }
+
+  function buildEpisodeButtonsHtml(slug, list, activeEpIndex) {
+    const q = (state.epFilter || '').trim().toLowerCase();
+    const filtered = list
+      .map((ep, idx) => ({ ep, idx }))
+      .filter(({ ep }) => !q || String(ep.name || '').toLowerCase().includes(q));
+    if (!filtered.length) {
+      return `<div style="grid-column:1/-1;color:var(--text-secondary);font-size:12.5px;padding:6px 0">Không tìm thấy tập phù hợp.</div>`;
+    }
+    return filtered.map(({ ep, idx }) => {
+      const pct = getEpisodeProgressPct(slug, idx);
+      const isActive = activeEpIndex === idx;
+      const watchedCls = pct >= 85 ? 'watched' : '';
+      return `
+        <button class="ep-btn ${isActive ? 'active' : ''} ${watchedCls}" data-play-ep="${idx}">
+          <span>${esc(ep.name)}</span>
+          ${pct > 0 ? `<span class="ep-btn-bar"><span style="width:${pct}%"></span></span>` : ''}
+        </button>`;
+    }).join('');
+  }
+
   function renderDetail() {
     const res = state.detailData;
     let html = `<button class="detail-back" id="btnDetailBack">${svgIcon('back', 14)}<span>Quay lại</span></button>`;
@@ -474,9 +763,14 @@
     const servers = res.episodes || [];
     const srv = servers[state.selectedServerIdx] || { server_data: [] };
     const hist = state.history.find(h => h.slug === m.slug);
+    const resumePct = hist && hist.duration > 1 ? Math.min(100, Math.round(((hist.currentTime || 0) / hist.duration) * 100)) : 0;
     const synopsis = (m.content || '').replace(/<[^>]+>/g, '').trim();
     const poster = resolveImg(m.poster_url || m.thumb_url) || IMG_FALLBACK_SVG;
     const posterFb = resolveImg(m.thumb_url || m.poster_url) || '';
+
+    const actors = formatPeopleList(m.actor);
+    const directors = formatPeopleList(m.director);
+    const countries = Array.isArray(m.country) ? m.country.map(c => c.name).filter(Boolean).join(', ') : '';
 
     const leftCol = `
       <div>
@@ -488,11 +782,29 @@
           <button class="btn-glass" id="btnDetailFav" style="color:var(--text-primary)">${svgIcon('bookmark', 14)}<span>${isFavorite(m.slug) ? 'Đã lưu' : 'Lưu'}</span></button>
           <button class="btn-glass" id="btnDetailBlock" style="color:var(--text-primary)">${svgIcon('eyeOff', 14)}<span>Ẩn</span></button>
         </div>
+        ${hist ? `
+          <div class="glass-box" style="padding:10px 12px">
+            <div style="display:flex;justify-content:space-between;font-size:12px">
+              <span>Tiến độ: <strong>${esc(hist.episodeName || 'Tập 1')}</strong></span>
+              <span style="color:var(--text-secondary)">${formatTime(hist.currentTime || 0)}${hist.duration ? ' / ' + formatTime(hist.duration) : ''} (${resumePct}%)</span>
+            </div>
+            <div class="progress-track"><div class="progress-fill" style="width:${resumePct}%"></div></div>
+          </div>` : ''}
         <div class="chips-row">
           ${m.quality ? `<span class="chip">${esc(m.quality)}</span>` : ''}
           ${m.episode_current ? `<span class="chip">${esc(m.episode_current)}</span>` : ''}
           ${(m.category || []).slice(0, 4).map(c => `<span class="chip">${esc(c.name)}</span>`).join('')}
         </div>
+        ${(directors || actors || countries || m.time) ? `
+          <div class="glass-box">
+            <div style="font-weight:700;margin-bottom:4px">Thông tin phim</div>
+            <div class="detail-meta-list">
+              ${countries ? `<div class="detail-meta-row"><span class="detail-meta-lbl">Quốc gia</span><span class="detail-meta-val">${esc(countries)}</span></div>` : ''}
+              ${m.time ? `<div class="detail-meta-row"><span class="detail-meta-lbl">Thời lượng</span><span class="detail-meta-val">${esc(m.time)}</span></div>` : ''}
+              ${directors ? `<div class="detail-meta-row"><span class="detail-meta-lbl">Đạo diễn</span><span class="detail-meta-val">${esc(directors)}</span></div>` : ''}
+              ${actors ? `<div class="detail-meta-row"><span class="detail-meta-lbl">Diễn viên</span><span class="detail-meta-val">${esc(actors)}</span></div>` : ''}
+            </div>
+          </div>` : ''}
         ${synopsis ? `<div class="glass-box"><div style="font-weight:700;margin-bottom:6px">Giới thiệu</div><div style="font-size:13px;line-height:1.5;color:var(--text-secondary)">${esc(synopsis)}</div></div>` : ''}
       </div>`;
 
@@ -510,6 +822,7 @@
         </div>`;
     }
 
+    const activeEpIdx = hist ? hist.episodeIndex : -1;
     const rightCol = `
       <div>
         ${franchiseHtml}
@@ -517,12 +830,15 @@
           <div class="chips-row">
             ${servers.map((s, i) => `<button class="chip ${i === state.selectedServerIdx ? 'active' : ''}" data-srv-idx="${i}">${esc(s.server_name)}</button>`).join('')}
           </div>
-          <div style="font-weight:700;margin-bottom:10px">Danh sách tập (${srv.server_data.length})</div>
-          <div class="ep-grid">
-            ${srv.server_data.map((ep, idx) => `<button class="ep-btn ${hist && hist.episodeIndex === idx ? 'active' : ''}" data-play-ep="${idx}">${esc(ep.name)}</button>`).join('')}
+          <div class="ep-toolbar">
+            <div style="font-weight:700">Danh sách tập (${srv.server_data.length})</div>
+            ${srv.server_data.length > 8 ? `<input id="epSearchInput" class="ep-search-input" placeholder="Lọc tập (vd: 12)..." value="${esc(state.epFilter)}" />` : ''}
+          </div>
+          <div class="ep-grid" id="detailEpGrid">
+            ${buildEpisodeButtonsHtml(m.slug, srv.server_data, activeEpIdx)}
           </div>
         </div>
-        ${state.detailRelated.length ? `<div class="section-hdr"><h3 class="section-title">Có thể bạn cũng thích</h3></div><div class="rail">${state.detailRelated.map(movieCardHtml).join('')}</div>` : ''}
+        ${state.detailRelated.length ? railSectionHtml('Có thể bạn cũng thích', state.detailRelated.map(movieCardHtml).join(''), 'railRelated') : ''}
       </div>`;
 
     return html + `<div class="detail-layout">${leftCol}${rightCol}</div>`;
@@ -533,14 +849,15 @@
     const vis = state.searchResults.filter(m => !isBlocked(m.slug));
     return `
       <div class="search-bar">
-        <input id="searchInput" class="search-input" placeholder="Tìm tên phim, tên gốc, diễn viên..." value="${esc(state.searchQuery)}" />
+        <input id="searchInput" class="search-input" placeholder="Tìm tên phim, tên gốc, diễn viên... (Ctrl+K hoặc /)" value="${esc(state.searchQuery)}" />
         <button id="btnRunSearch" class="btn-accent">Tìm</button>
       </div>
       <div class="chips-row">
         ${topics.map(t => `<button class="chip" data-search-topic="${esc(t)}">${esc(t)}</button>`).join('')}
       </div>
       ${vis.length
-        ? `<div class="movie-grid">${vis.map(movieCardHtml).join('')}</div>`
+        ? `<div class="movie-grid">${vis.map(movieCardHtml).join('')}</div>
+           ${state.searchHasMore ? `<div class="load-more-wrap"><button class="btn-glass" id="btnLoadMoreSearch" ${state.searchLoadingMore ? 'disabled' : ''}>${state.searchLoadingMore ? 'Đang tải...' : 'Tải thêm phim'}</button></div>` : ''}`
         : `<div class="glass-box" style="text-align:center;color:var(--text-secondary)">${state.searchQuery ? 'Không có kết quả phù hợp.' : 'Nhập từ khoá hoặc chọn chủ đề bên trên.'}</div>`}
     `;
   }
@@ -548,6 +865,8 @@
   let searchDebounce = null;
   async function runSearch(q) {
     state.searchQuery = q;
+    state.searchPage = 1;
+    state.searchHasMore = false;
     const trimmed = q.trim();
     if (!trimmed) {
       state.searchResults = [];
@@ -556,9 +875,38 @@
     }
     try {
       const r = await api(`/api/search?q=${encodeURIComponent(trimmed)}&page=1`);
-      state.searchResults = r.items || [];
+      const items = r.items || [];
+      state.searchResults = items;
+      state.searchHasMore = items.length >= 10;
       render();
+      const inp = document.getElementById('searchInput');
+      if (inp) { inp.focus(); inp.setSelectionRange(inp.value.length, inp.value.length); }
     } catch {}
+  }
+
+  async function loadMoreSearch() {
+    const trimmed = state.searchQuery.trim();
+    if (!trimmed || state.searchLoadingMore || !state.searchHasMore) return;
+    state.searchLoadingMore = true;
+    const mc = document.getElementById('mainContent');
+    const prevScroll = mc ? mc.scrollTop : 0;
+    render();
+    if (mc) mc.scrollTop = prevScroll;
+    try {
+      const nextPage = state.searchPage + 1;
+      const r = await api(`/api/search?q=${encodeURIComponent(trimmed)}&page=${nextPage}`);
+      const items = r.items || [];
+      state.searchPage = nextPage;
+      state.searchResults = mergeUniqueMovies(state.searchResults, items);
+      state.searchHasMore = items.length >= 10;
+    } catch {
+      toast('Không tải thêm được kết quả');
+    } finally {
+      state.searchLoadingMore = false;
+      const curScroll = mc ? mc.scrollTop : prevScroll;
+      render();
+      if (mc) mc.scrollTop = curScroll;
+    }
   }
 
   function renderLibrary() {
@@ -675,7 +1023,7 @@
         <div class="settings-section">
           <div class="settings-label">Ứng dụng</div>
           <div class="settings-card">
-            <div class="s-row"><span>Phiên bản</span><span class="s-sub">1.0.1</span></div>
+            <div class="s-row"><span>Phiên bản</span><span class="s-sub">${APP_VERSION}</span></div>
             <div class="s-row clickable" id="btnResetPrefs"><span style="color:#ff453a;font-weight:600">Đặt lại mặc định</span></div>
           </div>
         </div>
@@ -782,14 +1130,14 @@
             <span class="win-pill" style="color:#30D158;border-color:#30D158">LIVE</span>
           </div>
           <div style="display:flex;gap:8px">
-            <button class="tb-btn ${state.monitor.liveProbe?'active':''}" id="btnToggleProbe">Live Probe: ${state.monitor.liveProbe?'BẬT':'TẮT'}</button>
-            <button class="btn-accent" id="btnRunSpeedtest">Đo Speedtest Ngay</button>
+            <button class="tb-btn ${state.monitor.liveProbe ? 'active' : ''}" id="btnToggleProbe">Live Probe: ${state.monitor.liveProbe ? 'BẬT' : 'TẮT'}</button>
+            <button class="btn-accent" id="btnRunSpeedtest" ${state.monitor.testing ? 'disabled' : ''}>${state.monitor.testing ? 'Đang đo...' : 'Đo Speedtest Ngay'}</button>
           </div>
         </div>
 
         <div class="kpi-grid">
-          <div class="kpi-card"><div class="kpi-lbl">Tải xuống (Probe)</div><div class="kpi-val" style="color:#30D158">${dl.toFixed(1)} Mbps</div></div>
-          <div class="kpi-card"><div class="kpi-lbl">Tải lên (Probe)</div><div class="kpi-val" style="color:#0A84FF">${ul.toFixed(1)} Mbps</div></div>
+          <div class="kpi-card"><div class="kpi-lbl">Tải xuống</div><div class="kpi-val" style="color:#30D158">${dl.toFixed(1)} Mbps</div></div>
+          <div class="kpi-card"><div class="kpi-lbl">Tải lên</div><div class="kpi-val" style="color:#0A84FF">${ul.toFixed(1)} Mbps</div></div>
           <div class="kpi-card"><div class="kpi-lbl">Ping / Jitter</div><div class="kpi-val">${Math.round(ping)} / ${Math.round(jitter)} ms</div></div>
           <div class="kpi-card"><div class="kpi-lbl">RAM Tiến trình / CPU</div><div class="kpi-val">${si ? si.processRssMb.toFixed(0) : '--'} MB (${si ? si.cpuUsagePct.toFixed(0) : '0'}%)</div></div>
         </div>
@@ -868,56 +1216,165 @@
     plot(seriesB, colorB);
   }
 
-  async function pollMonitor(runProbe = false) {
+  function refreshMonitorChartsIfVisible() {
+    if (state.tab === 'settings' && state.settingsSubPage === 'monitor') {
+      render();
+      drawChart('canvasNetSpeed', state.monitor.dlSeries, state.monitor.ulSeries, '#30D158', '#0A84FF');
+      drawChart('canvasPingLoad', state.monitor.pingSeries, state.monitor.serverCpuSeries, '#FF9F0A', '#FA2D48');
+    }
+  }
+
+  async function measurePingJitter() {
+    const runProbeSet = async (makeUrl) => {
+      const warm = await fetch(makeUrl('warm'), { cache: 'no-store' });
+      if (!warm.ok) throw new Error('Ping warmup failed');
+      await warm.arrayBuffer();
+      const samples = [];
+      for (let i = 0; i < 4; i++) {
+        const t0 = performance.now();
+        const r = await fetch(makeUrl(i), { cache: 'no-store' });
+        if (!r.ok) throw new Error('Ping probe failed');
+        await r.arrayBuffer();
+        samples.push(Math.max(0.5, performance.now() - t0));
+      }
+      const avgPing = samples.reduce((a, b) => a + b, 0) / samples.length;
+      let jitterSum = 0;
+      for (let i = 1; i < samples.length; i++) jitterSum += Math.abs(samples[i] - samples[i - 1]);
+      const jitter = samples.length > 1 ? jitterSum / (samples.length - 1) : 0;
+      return { pingMs: avgPing, jitterMs: jitter };
+    };
+
     try {
+      return await runProbeSet(k => `https://speed.cloudflare.com/__down?bytes=0&_t=${Date.now()}_${k}_${Math.random()}`);
+    } catch {
+      return await runProbeSet(k => `/api/net-probe?kb=1&_t=${Date.now()}_${k}`);
+    }
+  }
+
+  async function readStreamBytes(res) {
+    if (res.body && typeof res.body.getReader === 'function') {
+      const reader = res.body.getReader();
+      let total = 0;
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        if (value) total += value.byteLength;
+      }
+      return total;
+    }
+    const buf = await res.arrayBuffer();
+    return buf.byteLength;
+  }
+
+  async function measureParallelDownload(urls) {
+    const responses = await Promise.all(urls.map(u => fetch(u, { cache: 'no-store' })));
+    for (const r of responses) {
+      if (!r.ok) throw new Error('Download stream HTTP ' + r.status);
+    }
+    const t0 = performance.now();
+    const counts = await Promise.all(responses.map(readStreamBytes));
+    const elapsedSec = Math.max(0.05, (performance.now() - t0) / 1000);
+    const totalBytes = counts.reduce((a, b) => a + b, 0);
+    return (totalBytes * 8) / (elapsedSec * 1_000_000);
+  }
+
+  async function measureDownloadSpeed(streamsCount = 4, cfBytes = 6000000, fallbackKb = 2048) {
+    try {
+      const cfUrls = Array.from({ length: streamsCount }, (_, i) =>
+        `https://speed.cloudflare.com/__down?bytes=${cfBytes}&_r=${Date.now()}_${i}_${Math.random()}`
+      );
+      return await measureParallelDownload(cfUrls);
+    } catch {
+      const fbUrls = Array.from({ length: streamsCount }, (_, i) =>
+        `/api/net-probe?kb=${fallbackKb}&_r=${Date.now()}_${i}_${Math.random()}`
+      );
+      return await measureParallelDownload(fbUrls);
+    }
+  }
+
+  async function measureUploadSpeed() {
+    const postStreams = async (url, byteLen) => {
+      const payload = new Uint8Array(byteLen);
       const t0 = performance.now();
+      const resps = await Promise.all([0, 1].map(() =>
+        fetch(url, {
+          method: 'POST',
+          cache: 'no-store',
+          body: payload,
+          headers: { 'Content-Type': 'application/octet-stream' }
+        })
+      ));
+      for (const r of resps) {
+        if (!r.ok) throw new Error('Upload HTTP ' + r.status);
+      }
+      const elapsedSec = Math.max(0.05, (performance.now() - t0) / 1000);
+      return (byteLen * 2 * 8) / (elapsedSec * 1_000_000);
+    };
+
+    try {
+      return await postStreams('https://speed.cloudflare.com/__up', 1_500_000);
+    } catch {
+      return await postStreams('/api/net-up', 512 * 1024);
+    }
+  }
+
+  function pushMonitorSeries(ns) {
+    const push = (arr, v) => { arr.push(v); if (arr.length > 24) arr.shift(); };
+    push(state.monitor.dlSeries, state.monitor.dlMbps);
+    push(state.monitor.ulSeries, state.monitor.ulMbps);
+    push(state.monitor.pingSeries, state.monitor.pingMs);
+    push(state.monitor.serverCpuSeries, ns?.cpuPct || 0);
+  }
+
+  async function pollMonitor(mode = 'telemetry') {
+    if (mode === 'full' && state.monitor.testing) return;
+    if (mode === 'full') {
+      state.monitor.testing = true;
+      refreshMonitorChartsIfVisible();
+    }
+    try {
       const [si, ns] = await Promise.all([
         api('/__desktop/sysinfo'),
         api('/api/net-stats').catch(() => null)
       ]);
-      const ping = Math.max(1, performance.now() - t0);
-      const prevPing = state.monitor.pingMs || ping;
-      state.monitor.jitterMs = Math.abs(ping - prevPing);
-      state.monitor.pingMs = ping;
       state.monitor.sysinfo = si;
       if (ns) state.monitor.netStats = ns;
 
-      if (runProbe) {
-        const d0 = performance.now();
-        const probeRes = await fetch('/api/net-probe?kb=256', { cache: 'no-store' });
-        const buf = await probeRes.arrayBuffer();
-        const dSec = Math.max(0.005, (performance.now() - d0) / 1000);
-        state.monitor.dlMbps = (buf.byteLength * 8) / (dSec * 1_000_000);
+      if (mode === 'full') {
+        const pj = await measurePingJitter();
+        state.monitor.pingMs = pj.pingMs;
+        state.monitor.jitterMs = pj.jitterMs;
 
-        const u0 = performance.now();
-        const payload = new Uint8Array(128 * 1024);
-        await fetch('/api/net-up', { method: 'POST', body: payload, headers: { 'Content-Type': 'application/octet-stream' } });
-        const uSec = Math.max(0.005, (performance.now() - u0) / 1000);
-        state.monitor.ulMbps = (payload.byteLength * 8) / (uSec * 1_000_000);
+        state.monitor.dlMbps = await measureDownloadSpeed(4, 6000000, 2048);
+        state.monitor.ulMbps = await measureUploadSpeed();
+        pushMonitorSeries(ns);
+      } else if (mode === 'live1mb') {
+        const pj = await measurePingJitter();
+        state.monitor.pingMs = pj.pingMs;
+        state.monitor.jitterMs = pj.jitterMs;
+        state.monitor.dlMbps = await measureDownloadSpeed(1, 1000000, 1024);
+        pushMonitorSeries(ns);
       }
 
-      const push = (arr, v) => { arr.push(v); if (arr.length > 24) arr.shift(); };
-      push(state.monitor.dlSeries, state.monitor.dlMbps);
-      push(state.monitor.ulSeries, state.monitor.ulMbps);
-      push(state.monitor.pingSeries, state.monitor.pingMs);
-      push(state.monitor.serverCpuSeries, ns?.cpuPct || 0);
-
-      if (state.tab === 'settings' && state.settingsSubPage === 'monitor') {
-        render();
-        drawChart('canvasNetSpeed', state.monitor.dlSeries, state.monitor.ulSeries, '#30D158', '#0A84FF');
-        drawChart('canvasPingLoad', state.monitor.pingSeries, state.monitor.serverCpuSeries, '#FF9F0A', '#FA2D48');
+      refreshMonitorChartsIfVisible();
+    } catch {
+      refreshMonitorChartsIfVisible();
+    } finally {
+      if (mode === 'full') {
+        state.monitor.testing = false;
+        refreshMonitorChartsIfVisible();
       }
-    } catch {}
+    }
   }
 
   function startMonitorLoop() {
     stopMonitorLoop();
-    pollMonitor(true);
+    pollMonitor('full');
     state.monitor.timer = setInterval(() => {
       if (state.tab === 'settings' && state.settingsSubPage === 'monitor') {
-        pollMonitor(state.monitor.liveProbe);
+        pollMonitor(state.monitor.liveProbe ? 'live1mb' : 'telemetry');
       }
-    }, 2500);
+    }, 8000);
   }
 
   function stopMonitorLoop() {
@@ -927,82 +1384,534 @@
     }
   }
 
-  function openPlayer(movie, servers, serverIndex, episodeIndex) {
-    const srv = servers[serverIndex] || { server_data: [] };
-    const ep = srv.server_data[episodeIndex];
-    if (!ep || !ep.link_m3u8) { toast('Tập này chưa có luồng HLS'); return; }
+  const playerCtrl = (() => {
+    let active = null;
+
+    return {
+      isOpen: () => !!active,
+      isDrawerOpen: () => !!(active && active.drawerOpen),
+      closeDrawer: () => { if (active) active.setDrawer(false); },
+      close: () => { if (active) active.close(); },
+      togglePlay: () => { if (active) active.togglePlay(); },
+      seekBy: (sec) => { if (active) active.seekBy(sec); },
+      adjustVolume: (delta) => { if (active) active.adjustVolume(delta); },
+      toggleMute: () => { if (active) active.toggleMute(); },
+      toggleFullscreen: () => { if (active) active.toggleFullscreen(); },
+      nextEp: () => { if (active) active.stepEpisode(1); },
+      prevEp: () => { if (active) active.stepEpisode(-1); },
+      triggerSkip: () => { if (active) active.triggerSkip(); },
+      _setActive: (inst) => { active = inst; }
+    };
+  })();
+
+  function openPlayer(movie, servers, initialServerIdx, initialEpisodeIdx) {
+    if (playerCtrl.isOpen()) playerCtrl.close();
 
     const root = document.getElementById('playerRoot');
+    let serverIndex = initialServerIdx || 0;
+    let episodeIndex = initialEpisodeIdx || 0;
     let hls = null;
     let markers = [];
     let skippedIds = new Set();
+    let activeSkip = null;
     let lastSave = -999;
+    let drawerOpen = false;
+    let drawerFilter = '';
+    let hudTimer = null;
+    let flashTimer = null;
+    let draggingScrub = false;
+    let boostVal = 1.0;
+    let audioCtx = null;
+    let mediaSrc = null;
+    let gainNode = null;
+    let curSrcIsClean = true;
 
-    const rawUrl = ep.link_m3u8.trim();
-    const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}`;
+    const srv0 = servers[serverIndex] || { server_data: [] };
+    const ep0 = srv0.server_data[episodeIndex];
+    if (!ep0 || !ep0.link_m3u8) { toast('Tập này chưa có luồng HLS'); return; }
 
     root.innerHTML = `
-      <div class="player-overlay">
-        <div class="player-topbar">
-          <div style="min-width:0">
-            <div style="font-weight:700;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${esc(movie.name)} — ${esc(ep.name)}</div>
-            <div id="playerSourceLbl" style="font-size:11px;color:#a4a4ad">Nguồn: Chuẩn (clean-m3u8)</div>
-          </div>
-          <div style="display:flex;gap:6px">
-            <button class="tb-btn" id="btnPlayerAspect">Tỉ lệ: Gốc</button>
-            <button class="tb-btn" id="btnPlayerClose">${svgIcon('close', 13)}<span>Đóng</span></button>
-          </div>
-        </div>
+      <div class="player-overlay" id="playerOverlay">
         <div id="playerStage" class="player-stage">
-          <video id="videoEl" controls autoplay playsinline></video>
-          <button id="btnSkipMarker" class="skip-floating hidden"><span>Bỏ qua mở đầu</span>${svgIcon('forward', 14)}</button>
+          <video id="videoEl" autoplay playsinline></video>
         </div>
-        <div class="player-controls">
-          <div style="display:flex;gap:6px;align-items:center">
-            <button class="tb-btn" id="btnPrevEp" ${episodeIndex <= 0 ? 'disabled' : ''}>${svgIcon('prev', 13)}<span>Tập trước</span></button>
-            <button class="tb-btn" id="btnNextEp" ${episodeIndex + 1 >= srv.server_data.length ? 'disabled' : ''}><span>Tập sau</span>${svgIcon('next', 13)}</button>
+
+        <div class="player-buffering hidden" id="playerBuffering"></div>
+        <div class="player-center-flash" id="playerFlash"></div>
+
+        <div class="player-topbar" id="playerTopbar">
+          <div class="player-title-wrap">
+            <div class="player-title" id="playerTitleText"></div>
+            <div class="player-sub" id="playerSourceLbl">Nguồn: Chuẩn (clean-m3u8)</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
-            <select id="selPlayerSpeed">
-              <option value="0.75">0.75x</option>
-              <option value="1" selected>1.0x</option>
-              <option value="1.25">1.25x</option>
-              <option value="1.5">1.5x</option>
-              <option value="2">2.0x</option>
-            </select>
-            <button class="tb-btn" id="btnFailover">Đổi nguồn</button>
+            <button class="p-btn" id="btnPlayerDrawer" title="Danh sách tập & server">${svgIcon('list', 14)}<span>Tập phim</span></button>
+            <button class="p-btn" id="btnPlayerClose" title="Đóng trình phát (Esc)">${svgIcon('close', 14)}<span>Đóng</span></button>
           </div>
         </div>
+
+        <button id="btnSkipMarker" class="skip-floating hidden"><span>Bỏ qua mở đầu</span>${svgIcon('forward', 14)}</button>
+
+        <div class="player-bottom-hud" id="playerBottomHud">
+          <div class="scrubber-wrap" id="scrubberWrap">
+            <div class="scrubber-track" id="scrubberTrack">
+              <div class="scrubber-buf" id="scrubberBuf" style="width:0%"></div>
+              <div class="scrubber-fill" id="scrubberFill" style="width:0%"></div>
+              <div class="scrubber-markers" id="scrubberMarkers"></div>
+              <div class="scrubber-thumb" id="scrubberThumb" style="left:0%"></div>
+            </div>
+            <div class="scrubber-tooltip" id="scrubberTooltip">0:00</div>
+          </div>
+
+          <div class="player-ctrl-row">
+            <div class="player-ctrl-group">
+              <button class="p-btn p-btn-icon" id="btnPlayPause" title="Phát / Tạm dừng (Space/K)">${svgIcon('pause', 15)}</button>
+              <button class="p-btn" id="btnSeekBack" title="Lùi 10 giây (J / Trái)">${svgIcon('replay10', 14)}<span>10s</span></button>
+              <button class="p-btn" id="btnSeekFwd" title="Tiến 10 giây (L / Phải)"><span>10s</span>${svgIcon('forward10', 14)}</button>
+              <button class="p-btn p-btn-icon" id="btnPrevEp" title="Tập trước (P)">${svgIcon('prev', 14)}</button>
+              <button class="p-btn p-btn-icon" id="btnNextEp" title="Tập sau (N)">${svgIcon('next', 14)}</button>
+              <div class="p-vol-wrap">
+                <button class="p-btn p-btn-icon" id="btnMute" title="Tắt/Bật tiếng (M)">${svgIcon('vol2', 15)}</button>
+                <input type="range" class="p-range" id="volRange" min="0" max="1" step="0.02" value="1" title="Âm lượng" />
+                <select class="p-select" id="selPlayerBoost" title="Khuếch đại âm lượng (WebAudio Gain)">
+                  <option value="1" selected>100%</option>
+                  <option value="1.25">125%</option>
+                  <option value="1.5">150%</option>
+                  <option value="1.75">175%</option>
+                  <option value="2">200%</option>
+                </select>
+              </div>
+              <span class="p-time" id="playerTimeLbl">0:00 / 0:00</span>
+            </div>
+
+            <div class="player-ctrl-group">
+              <select class="p-select" id="selPlayerQuality" title="Chất lượng HLS">
+                <option value="-1" selected>Auto</option>
+              </select>
+              <select class="p-select" id="selPlayerSpeed" title="Tốc độ phát">
+                <option value="0.75">0.75x</option>
+                <option value="1" selected>1.0x</option>
+                <option value="1.25">1.25x</option>
+                <option value="1.5">1.5x</option>
+                <option value="2">2.0x</option>
+              </select>
+              <button class="p-btn" id="btnPlayerAspect">Tỉ lệ: Gốc</button>
+              <button class="p-btn" id="btnFailover">Đổi nguồn</button>
+              <button class="p-btn p-btn-icon" id="btnPlayerPip" title="Hình trong hình (PiP)">${svgIcon('pip', 15)}</button>
+              <button class="p-btn p-btn-icon ${state.desktop.fullscreen ? 'active' : ''}" id="btnPlayerFullscreen" title="Toàn màn hình (F / F11)">${svgIcon(state.desktop.fullscreen ? 'unfullscreen' : 'fullscreen', 15)}</button>
+            </div>
+          </div>
+        </div>
+
+        <aside class="player-drawer" id="playerDrawer">
+          <div class="player-drawer-hdr">
+            <strong>Danh sách tập & Nguồn</strong>
+            <button class="p-btn p-btn-icon" id="btnCloseDrawer">${svgIcon('close', 14)}</button>
+          </div>
+          <div class="player-drawer-body">
+            <div class="chips-row" id="drawerServerChips"></div>
+            <input id="drawerEpSearch" class="ep-search-input" style="width:100%;margin-bottom:10px" placeholder="Tìm tập nhanh..." />
+            <div class="drawer-ep-list" id="drawerEpList"></div>
+          </div>
+        </aside>
       </div>`;
 
-    const video = document.getElementById('videoEl');
+    const overlay = document.getElementById('playerOverlay');
     const stage = document.getElementById('playerStage');
+    const video = document.getElementById('videoEl');
+    const bufferingEl = document.getElementById('playerBuffering');
+    const flashEl = document.getElementById('playerFlash');
     const skipBtn = document.getElementById('btnSkipMarker');
+    const scrubWrap = document.getElementById('scrubberWrap');
+    const scrubBuf = document.getElementById('scrubberBuf');
+    const scrubFill = document.getElementById('scrubberFill');
+    const scrubThumb = document.getElementById('scrubberThumb');
+    const scrubMarkers = document.getElementById('scrubberMarkers');
+    const scrubTip = document.getElementById('scrubberTooltip');
+    const timeLbl = document.getElementById('playerTimeLbl');
+    const btnPlayPause = document.getElementById('btnPlayPause');
+    const btnMute = document.getElementById('btnMute');
+    const volRange = document.getElementById('volRange');
+    const selBoost = document.getElementById('selPlayerBoost');
+    const selQuality = document.getElementById('selPlayerQuality');
+    const selSpeed = document.getElementById('selPlayerSpeed');
+    const drawerEl = document.getElementById('playerDrawer');
 
-    function attachStream(srcUrl, label) {
+    function currentSrv() {
+      return servers[serverIndex] || { server_data: [] };
+    }
+    function currentEp() {
+      return currentSrv().server_data[episodeIndex];
+    }
+
+    function showFlash(iconName, text) {
+      flashEl.innerHTML = `${iconName ? svgIcon(iconName, 16) : ''}<span>${esc(text)}</span>`;
+      flashEl.classList.add('show');
+      clearTimeout(flashTimer);
+      flashTimer = setTimeout(() => flashEl.classList.remove('show'), 750);
+    }
+
+    function wakeHud() {
+      overlay.classList.remove('hud-hidden');
+      clearTimeout(hudTimer);
+      if (!video.paused && !drawerOpen && !draggingScrub) {
+        hudTimer = setTimeout(() => {
+          if (!video.paused && !drawerOpen && !draggingScrub) {
+            overlay.classList.add('hud-hidden');
+          }
+        }, 3000);
+      }
+    }
+
+    function updatePlayPauseUi() {
+      btnPlayPause.innerHTML = svgIcon(video.paused ? 'play' : 'pause', 15);
+      wakeHud();
+    }
+
+    function updateMuteUi() {
+      const muted = video.muted || video.volume === 0;
+      btnMute.innerHTML = svgIcon(muted ? 'volX' : 'vol2', 15);
+      volRange.value = video.muted ? '0' : String(video.volume);
+    }
+
+    function ensureGainBoost(val) {
+      boostVal = val;
+      if (val <= 1.0 && !gainNode) return;
+      try {
+        if (!audioCtx) {
+          const AC = window.AudioContext || window.webkitAudioContext;
+          if (!AC) return;
+          audioCtx = new AC();
+          mediaSrc = audioCtx.createMediaElementSource(video);
+          gainNode = audioCtx.createGain();
+          mediaSrc.connect(gainNode);
+          gainNode.connect(audioCtx.destination);
+        }
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
+        if (gainNode) gainNode.gain.value = val;
+      } catch {
+        toast('Không thể kích hoạt khuếch đại âm thanh trên luồng này');
+      }
+    }
+
+    function renderScrubberMarkers() {
+      const dur = video.duration || 0;
+      if (!dur || !markers.length) {
+        scrubMarkers.innerHTML = '';
+        return;
+      }
+      scrubMarkers.innerHTML = markers.map(m => {
+        const start = Math.max(0, Math.min(dur, m.start || 0));
+        const end = m.openEnd && dur > start ? dur : Math.max(start, Math.min(dur, m.end || start + 2));
+        const leftPct = (start / dur) * 100;
+        const widthPct = Math.max(0.4, ((end - start) / dur) * 100);
+        const cls = m.type === 'ad' ? 'marker-ad' : (m.type === 'outro' ? 'marker-outro' : 'marker-intro');
+        const label = m.label || (m.type === 'ad' ? 'Quảng cáo' : m.type === 'outro' ? 'Outro' : 'Intro');
+        return `<span class="scrubber-marker ${cls}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%" title="${esc(label)}"></span>`;
+      }).join('');
+    }
+
+    function syncScrubberUi() {
+      const dur = video.duration || 0;
+      const cur = video.currentTime || 0;
+      const pct = dur > 0 ? Math.min(100, Math.max(0, (cur / dur) * 100)) : 0;
+      scrubFill.style.width = `${pct}%`;
+      scrubThumb.style.left = `${pct}%`;
+      timeLbl.textContent = `${formatTime(cur)} / ${formatTime(dur)}`;
+
+      if (dur > 0 && video.buffered && video.buffered.length > 0) {
+        let bufEnd = 0;
+        for (let i = 0; i < video.buffered.length; i++) {
+          if (video.buffered.start(i) <= cur + 1 && video.buffered.end(i) > bufEnd) {
+            bufEnd = video.buffered.end(i);
+          }
+        }
+        scrubBuf.style.width = `${Math.min(100, (bufEnd / dur) * 100)}%`;
+      } else {
+        scrubBuf.style.width = '0%';
+      }
+    }
+
+    function renderDrawer() {
+      const srvChips = document.getElementById('drawerServerChips');
+      const epListEl = document.getElementById('drawerEpList');
+      srvChips.innerHTML = servers.map((s, i) => `
+        <button class="chip ${i === serverIndex ? 'active' : ''}" data-drawer-srv="${i}">${esc(s.server_name)}</button>
+      `).join('');
+      const list = currentSrv().server_data || [];
+      const q = drawerFilter.trim().toLowerCase();
+      const filtered = list
+        .map((ep, idx) => ({ ep, idx }))
+        .filter(({ ep }) => !q || String(ep.name || '').toLowerCase().includes(q));
+      epListEl.innerHTML = filtered.map(({ ep, idx }) => {
+        const pct = getEpisodeProgressPct(movie.slug, idx);
+        return `
+          <button class="ep-btn ${idx === episodeIndex ? 'active' : ''} ${pct >= 85 ? 'watched' : ''}" data-drawer-ep="${idx}">
+            <span>${esc(ep.name)}</span>
+            ${pct > 0 ? `<span class="ep-btn-bar"><span style="width:${pct}%"></span></span>` : ''}
+          </button>`;
+      }).join('');
+
+      srvChips.querySelectorAll('[data-drawer-srv]').forEach(btn => {
+        btn.onclick = () => {
+          const nextSrv = parseInt(btn.dataset.drawerSrv, 10) || 0;
+          if (nextSrv === serverIndex) return;
+          serverIndex = nextSrv;
+          const maxIdx = Math.max(0, (currentSrv().server_data || []).length - 1);
+          if (episodeIndex > maxIdx) episodeIndex = maxIdx;
+          loadCurrentEpisode(false);
+        };
+      });
+      epListEl.querySelectorAll('[data-drawer-ep]').forEach(btn => {
+        btn.onclick = () => {
+          const nextEp = parseInt(btn.dataset.drawerEp, 10) || 0;
+          if (nextEp === episodeIndex) return;
+          saveCurrentProgress(true);
+          episodeIndex = nextEp;
+          loadCurrentEpisode(true);
+        };
+      });
+    }
+
+    function setDrawer(open) {
+      drawerOpen = !!open;
+      drawerEl.classList.toggle('open', drawerOpen);
+      document.getElementById('btnPlayerDrawer').classList.toggle('active', drawerOpen);
+      if (drawerOpen) renderDrawer();
+      wakeHud();
+    }
+
+    function populateQualitySelector() {
+      if (!hls || !hls.levels || !hls.levels.length) {
+        selQuality.innerHTML = '<option value="-1" selected>Auto</option>';
+        return;
+      }
+      const opts = ['<option value="-1" selected>Auto</option>'];
+      const indexed = hls.levels.map((lvl, i) => ({
+        idx: i,
+        height: lvl.height || 0,
+        bitrate: lvl.bitrate || 0
+      })).sort((a, b) => (b.height - a.height) || (b.bitrate - a.bitrate));
+      for (const item of indexed) {
+        const lbl = item.height ? `${item.height}p` : `${Math.round(item.bitrate / 1000)}kbps`;
+        opts.push(`<option value="${item.idx}">${esc(lbl)}</option>`);
+      }
+      selQuality.innerHTML = opts.join('');
+    }
+
+    function attachStream(srcUrl, label, rawUrl, resumeSec) {
       document.getElementById('playerSourceLbl').textContent = `Nguồn: ${label}`;
       if (hls) { hls.destroy(); hls = null; }
+      selQuality.innerHTML = '<option value="-1" selected>Auto</option>';
+      let soughtResume = false;
+      const tryResume = () => {
+        if (!soughtResume && resumeSec > 5 && Number.isFinite(video.duration) && resumeSec < video.duration - 10) {
+          soughtResume = true;
+          video.currentTime = resumeSec;
+        }
+      };
+
       if (window.Hls && window.Hls.isSupported()) {
         hls = new window.Hls({ enableWorker: true });
         hls.loadSource(srcUrl);
         hls.attachMedia(video);
+        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          populateQualitySelector();
+          video.playbackRate = parseFloat(selSpeed.value) || 1;
+          video.play().catch(() => {});
+          tryResume();
+        });
         hls.on(window.Hls.Events.ERROR, (_, data) => {
           if (data.fatal && srcUrl !== rawUrl) {
-            attachStream(rawUrl, 'Dự phòng (gốc)');
+            curSrcIsClean = false;
+            attachStream(rawUrl, 'Dự phòng (gốc)', rawUrl, resumeSec);
           }
         });
       } else {
         video.src = srcUrl;
+        video.onloadedmetadata = () => {
+          video.playbackRate = parseFloat(selSpeed.value) || 1;
+          tryResume();
+          renderScrubberMarkers();
+        };
       }
     }
 
-    attachStream(cleanUrl, 'Chuẩn (clean-m3u8)');
+    function saveCurrentProgress(force = false) {
+      const ep = currentEp();
+      if (!ep) return;
+      const t = video.currentTime || 0;
+      const dur = video.duration || 0;
+      if (!force && (t <= 5 || Math.abs(t - lastSave) < 12)) return;
+      if (t <= 1) return;
+      lastSave = t;
+      recordEpisodeProgress(movie.slug, episodeIndex, t, dur);
+      const entry = {
+        slug: movie.slug,
+        name: movie.name,
+        poster: movie.poster_url || movie.thumb_url,
+        episodeIndex,
+        episodeName: ep.name,
+        currentTime: t,
+        duration: dur
+      };
+      state.history = [entry, ...state.history.filter(x => x.slug !== movie.slug)].slice(0, 40);
+      localStorage.setItem('mf.history', JSON.stringify(state.history));
+      if (state.token) {
+        api('/api/user/history', { method: 'POST', json: entry }).catch(() => {});
+      }
+    }
 
-    const epDigits = (ep.slug || String(episodeIndex + 1)).replace(/\D+/g, '') || '1';
-    const titleHint = movie.origin_name || movie.name || '';
-    api(`/api/ads/${encodeURIComponent(movie.slug)}/${encodeURIComponent(epDigits)}?title=${encodeURIComponent(titleHint)}`)
-      .then(r => { markers = r.markers || []; })
-      .catch(() => {});
+    function loadCurrentEpisode(useSavedResume) {
+      const srv = currentSrv();
+      const ep = currentEp();
+      if (!ep || !ep.link_m3u8) { toast('Tập này chưa có luồng HLS'); return; }
+
+      markers = [];
+      skippedIds = new Set();
+      activeSkip = null;
+      lastSave = -999;
+      curSrcIsClean = true;
+      skipBtn.classList.add('hidden');
+      scrubMarkers.innerHTML = '';
+
+      document.getElementById('playerTitleText').textContent = `${movie.name} — ${ep.name}`;
+      document.getElementById('btnPrevEp').disabled = episodeIndex <= 0;
+      document.getElementById('btnNextEp').disabled = episodeIndex + 1 >= srv.server_data.length;
+
+      let resumeSec = 0;
+      if (useSavedResume) {
+        const epRec = state.epProgress[movie.slug]?.[String(episodeIndex)];
+        const hist = state.history.find(h => h.slug === movie.slug && h.episodeIndex === episodeIndex);
+        if (epRec && epRec.t > 5 && (!epRec.d || epRec.t < epRec.d - 15)) resumeSec = epRec.t;
+        else if (hist && hist.currentTime > 5 && (!hist.duration || hist.currentTime < hist.duration - 15)) resumeSec = hist.currentTime;
+      }
+
+      const rawUrl = ep.link_m3u8.trim();
+      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}`;
+      attachStream(cleanUrl, 'Chuẩn (clean-m3u8)', rawUrl, resumeSec);
+
+      const epDigits = (ep.slug || String(episodeIndex + 1)).replace(/\D+/g, '') || '1';
+      const titleHint = movie.origin_name || movie.name || '';
+      api(`/api/ads/${encodeURIComponent(movie.slug)}/${encodeURIComponent(epDigits)}?title=${encodeURIComponent(titleHint)}`)
+        .then(r => {
+          markers = r.markers || [];
+          renderScrubberMarkers();
+        })
+        .catch(() => {});
+
+      if (drawerOpen) renderDrawer();
+      wakeHud();
+    }
+
+    function stepEpisode(delta) {
+      const srv = currentSrv();
+      const next = episodeIndex + delta;
+      if (next < 0 || next >= srv.server_data.length) return;
+      saveCurrentProgress(true);
+      episodeIndex = next;
+      loadCurrentEpisode(true);
+      showFlash(delta > 0 ? 'next' : 'prev', currentEp()?.name || '');
+    }
+
+    function togglePlay() {
+      if (video.paused) {
+        video.play().catch(() => {});
+        showFlash('play', 'Phát');
+      } else {
+        video.pause();
+        showFlash('pause', 'Tạm dừng');
+      }
+      updatePlayPauseUi();
+    }
+
+    function seekBy(deltaSec) {
+      const dur = video.duration || 0;
+      const next = Math.max(0, Math.min(dur > 0 ? dur : Infinity, (video.currentTime || 0) + deltaSec));
+      video.currentTime = next;
+      syncScrubberUi();
+      showFlash(deltaSec >= 0 ? 'forward10' : 'replay10', (deltaSec >= 0 ? '+' : '') + deltaSec + 's');
+      wakeHud();
+    }
+
+    function adjustVolume(delta) {
+      video.muted = false;
+      video.volume = Math.max(0, Math.min(1, (video.volume || 0) + delta));
+      updateMuteUi();
+      showFlash(video.volume === 0 ? 'volX' : 'vol2', `${Math.round(video.volume * 100)}%`);
+      wakeHud();
+    }
+
+    function toggleMute() {
+      video.muted = !video.muted;
+      updateMuteUi();
+      showFlash(video.muted ? 'volX' : 'vol2', video.muted ? 'Tắt tiếng' : `${Math.round(video.volume * 100)}%`);
+      wakeHud();
+    }
+
+    function triggerSkip() {
+      if (!activeSkip) return;
+      skippedIds.add(activeSkip.m.id);
+      video.currentTime = activeSkip.end + 0.1;
+      skipBtn.classList.add('hidden');
+      activeSkip = null;
+      showFlash('forward', 'Đã bỏ qua');
+    }
+
+    function closePlayer() {
+      saveCurrentProgress(true);
+      clearTimeout(hudTimer);
+      clearTimeout(flashTimer);
+      if (hls) { hls.destroy(); hls = null; }
+      video.pause();
+      if (document.pictureInPictureElement === video) {
+        document.exitPictureInPicture().catch(() => {});
+      }
+      if (audioCtx) { audioCtx.close().catch(() => {}); audioCtx = null; }
+      playerCtrl._setActive(null);
+      root.innerHTML = '';
+      if (state.detailSlug) render();
+    }
+
+    // Event wiring
+    overlay.addEventListener('mousemove', wakeHud);
+    stage.addEventListener('click', () => {
+      if (drawerOpen) { setDrawer(false); return; }
+      togglePlay();
+    });
+    stage.addEventListener('dblclick', () => windowOp('fullscreen'));
+
+    btnPlayPause.onclick = (e) => { e.stopPropagation(); togglePlay(); };
+    document.getElementById('btnSeekBack').onclick = () => seekBy(-10);
+    document.getElementById('btnSeekFwd').onclick = () => seekBy(10);
+    document.getElementById('btnPrevEp').onclick = () => stepEpisode(-1);
+    document.getElementById('btnNextEp').onclick = () => stepEpisode(1);
+    btnMute.onclick = toggleMute;
+    volRange.oninput = () => {
+      video.muted = false;
+      video.volume = parseFloat(volRange.value) || 0;
+      updateMuteUi();
+      wakeHud();
+    };
+    selBoost.onchange = () => {
+      const val = parseFloat(selBoost.value) || 1.0;
+      ensureGainBoost(val);
+      showFlash('vol2', `Âm lượng ${Math.round(val * 100)}%`);
+      wakeHud();
+    };
+    selQuality.onchange = () => {
+      if (!hls) return;
+      hls.currentLevel = parseInt(selQuality.value, 10);
+      const lbl = selQuality.options[selQuality.selectedIndex]?.textContent || 'Auto';
+      showFlash(null, `Chất lượng: ${lbl}`);
+      wakeHud();
+    };
+    selSpeed.onchange = () => {
+      const rate = parseFloat(selSpeed.value) || 1;
+      video.playbackRate = rate;
+      showFlash(null, `${rate}x`);
+      wakeHud();
+    };
 
     const aspects = [
       ['fit', 'Gốc', ''],
@@ -1017,36 +1926,91 @@
       const [, lbl, cls] = aspects[aIdx];
       stage.className = 'player-stage ' + cls;
       document.getElementById('btnPlayerAspect').textContent = 'Tỉ lệ: ' + lbl;
-    };
-
-    document.getElementById('selPlayerSpeed').onchange = (e) => {
-      video.playbackRate = parseFloat(e.target.value) || 1;
+      wakeHud();
     };
 
     document.getElementById('btnFailover').onclick = () => {
-      const cur = document.getElementById('playerSourceLbl').textContent.includes('Chuẩn');
-      attachStream(cur ? rawUrl : cleanUrl, cur ? 'Dự phòng (gốc)' : 'Chuẩn (clean-m3u8)');
+      const ep = currentEp();
+      if (!ep) return;
+      const rawUrl = ep.link_m3u8.trim();
+      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}`;
+      const curPos = video.currentTime || 0;
+      curSrcIsClean = !curSrcIsClean;
+      attachStream(curSrcIsClean ? cleanUrl : rawUrl, curSrcIsClean ? 'Chuẩn (clean-m3u8)' : 'Dự phòng (gốc)', rawUrl, curPos);
+      wakeHud();
     };
 
-    const closePlayer = () => {
-      if (hls) hls.destroy();
-      video.pause();
-      root.innerHTML = '';
+    document.getElementById('btnPlayerPip').onclick = async () => {
+      try {
+        if (document.pictureInPictureElement === video) {
+          await document.exitPictureInPicture();
+        } else if (document.pictureInPictureEnabled && video.requestPictureInPicture) {
+          await video.requestPictureInPicture();
+        } else {
+          toast('Trình phát không hỗ trợ Picture-in-Picture');
+        }
+      } catch {
+        toast('Không thể mở Picture-in-Picture');
+      }
+      wakeHud();
     };
+
+    document.getElementById('btnPlayerFullscreen').onclick = () => windowOp('fullscreen');
+    document.getElementById('btnPlayerDrawer').onclick = () => setDrawer(!drawerOpen);
+    document.getElementById('btnCloseDrawer').onclick = () => setDrawer(false);
     document.getElementById('btnPlayerClose').onclick = closePlayer;
 
-    document.getElementById('btnPrevEp').onclick = () => {
-      if (episodeIndex > 0) { closePlayer(); openPlayer(movie, servers, serverIndex, episodeIndex - 1); }
-    };
-    document.getElementById('btnNextEp').onclick = () => {
-      if (episodeIndex + 1 < srv.server_data.length) { closePlayer(); openPlayer(movie, servers, serverIndex, episodeIndex + 1); }
+    document.getElementById('drawerEpSearch').oninput = (e) => {
+      drawerFilter = e.target.value;
+      renderDrawer();
     };
 
+    // Scrubber drag & click
+    const seekFromPointer = (clientX) => {
+      const rect = scrubWrap.getBoundingClientRect();
+      const ratio = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
+      const dur = video.duration || 0;
+      scrubTip.style.left = `${ratio * 100}%`;
+      scrubTip.textContent = formatTime(ratio * dur);
+      if (draggingScrub && dur > 0) {
+        video.currentTime = ratio * dur;
+        syncScrubberUi();
+      }
+    };
+    scrubWrap.addEventListener('pointerdown', (e) => {
+      e.preventDefault();
+      draggingScrub = true;
+      scrubWrap.classList.add('dragging');
+      scrubWrap.setPointerCapture(e.pointerId);
+      seekFromPointer(e.clientX);
+      wakeHud();
+    });
+    scrubWrap.addEventListener('pointermove', (e) => seekFromPointer(e.clientX));
+    const endScrub = (e) => {
+      if (!draggingScrub) return;
+      seekFromPointer(e.clientX);
+      draggingScrub = false;
+      scrubWrap.classList.remove('dragging');
+      wakeHud();
+    };
+    scrubWrap.addEventListener('pointerup', endScrub);
+    scrubWrap.addEventListener('pointercancel', endScrub);
+
+    // Video lifecycle
+    video.onplay = () => { bufferingEl.classList.add('hidden'); updatePlayPauseUi(); };
+    video.onpause = () => { updatePlayPauseUi(); };
+    video.onwaiting = () => { bufferingEl.classList.remove('hidden'); };
+    video.onplaying = () => { bufferingEl.classList.add('hidden'); updatePlayPauseUi(); };
+    video.oncanplay = () => { bufferingEl.classList.add('hidden'); };
+    video.ondurationchange = () => { renderScrubberMarkers(); syncScrubberUi(); };
+    video.onprogress = syncScrubberUi;
+
     video.ontimeupdate = () => {
+      syncScrubberUi();
       const t = video.currentTime || 0;
       const dur = video.duration || 0;
 
-      let activeSkip = null;
+      activeSkip = null;
       for (const m of markers) {
         const end = m.openEnd && dur > m.start ? dur : m.end;
         const mode = m.mode || (m.type === 'ad' ? 'cut' : 'skip');
@@ -1068,38 +2032,41 @@
       }
 
       if (activeSkip) {
-        const lbl = activeSkip.m.type === 'outro' ? 'Bỏ qua kết thúc' : (activeSkip.m.label || 'Bỏ qua mở đầu');
+        const lbl = activeSkip.m.type === 'outro' ? 'Bỏ qua kết thúc (S)' : (activeSkip.m.label || 'Bỏ qua mở đầu (S)');
         skipBtn.innerHTML = `<span>${esc(lbl)}</span>${svgIcon('forward', 14)}`;
         skipBtn.classList.remove('hidden');
-        skipBtn.onclick = () => {
-          skippedIds.add(activeSkip.m.id);
-          video.currentTime = activeSkip.end + 0.1;
-          skipBtn.classList.add('hidden');
-        };
+        skipBtn.onclick = triggerSkip;
       } else {
         skipBtn.classList.add('hidden');
       }
 
-      if (t > 5 && Math.abs(t - lastSave) >= 12) {
-        lastSave = t;
-        const entry = {
-          slug: movie.slug, name: movie.name, poster: movie.poster_url || movie.thumb_url,
-          episodeIndex, episodeName: ep.name, currentTime: t, duration: dur
-        };
-        state.history = [entry, ...state.history.filter(x => x.slug !== movie.slug)].slice(0, 40);
-        localStorage.setItem('mf.history', JSON.stringify(state.history));
-        if (state.token) {
-          api('/api/user/history', { method: 'POST', json: entry }).catch(() => {});
-        }
-      }
+      saveCurrentProgress(false);
     };
 
     video.onended = () => {
+      saveCurrentProgress(true);
+      const srv = currentSrv();
       if (state.prefs.autoNext && episodeIndex + 1 < srv.server_data.length) {
-        closePlayer();
-        openPlayer(movie, servers, serverIndex, episodeIndex + 1);
+        stepEpisode(1);
+      } else {
+        updatePlayPauseUi();
       }
     };
+
+    playerCtrl._setActive({
+      get drawerOpen() { return drawerOpen; },
+      setDrawer,
+      close: closePlayer,
+      togglePlay,
+      seekBy,
+      adjustVolume,
+      toggleMute,
+      toggleFullscreen: () => windowOp('fullscreen'),
+      stepEpisode,
+      triggerSkip
+    });
+
+    loadCurrentEpisode(true);
   }
 
   function openAuthModal() {
@@ -1203,30 +2170,25 @@
         openDetail(el.dataset.slug);
       };
     });
-    mc.querySelectorAll('[data-open-slug]').forEach(el => {
-      el.onclick = () => openDetail(el.dataset.openSlug);
-    });
+    bindHeroEvents();
+
     mc.querySelectorAll('[data-cat]').forEach(el => {
       el.onclick = () => selectCategory(el.dataset.cat);
     });
-    mc.querySelectorAll('[data-hero-idx]').forEach(el => {
-      el.onclick = () => { state.heroIdx = parseInt(el.dataset.heroIdx, 10) || 0; render(); };
-    });
-    mc.querySelectorAll('[data-fav-slug]').forEach(el => {
-      el.onclick = async () => {
-        if (!state.token) { openAuthModal(); return; }
-        const m = state.heroMovies.find(x => x.slug === el.dataset.favSlug);
-        if (!m) return;
-        try {
-          const r = await api('/api/user/favorites/toggle', {
-            method: 'POST',
-            json: { slug: m.slug, name: m.name, poster: m.poster_url || m.thumb_url || '', year: m.year || 0, quality: m.quality || 'HD', lang: m.lang || 'Vietsub' }
-          });
-          if (Array.isArray(r.favorites)) state.favorites = r.favorites;
-          render();
-        } catch {}
+    mc.querySelectorAll('[data-rail-target]').forEach(btn => {
+      btn.onclick = () => {
+        const rail = document.getElementById(btn.dataset.railTarget);
+        const dir = parseInt(btn.dataset.railDir, 10) || 1;
+        if (rail) rail.scrollBy({ left: dir * 520, behavior: 'smooth' });
       };
     });
+
+    const btnMoreDisc = document.getElementById('btnLoadMoreDiscover');
+    if (btnMoreDisc) btnMoreDisc.onclick = loadMoreDiscover;
+    const btnMoreCat = document.getElementById('btnLoadMoreCat');
+    if (btnMoreCat) btnMoreCat.onclick = loadMoreCategory;
+    const btnMoreSearch = document.getElementById('btnLoadMoreSearch');
+    if (btnMoreSearch) btnMoreSearch.onclick = loadMoreSearch;
 
     const backBtn = document.getElementById('btnDetailBack');
     if (backBtn) backBtn.onclick = () => { state.detailSlug = null; render(); };
@@ -1237,12 +2199,32 @@
     mc.querySelectorAll('[data-srv-idx]').forEach(el => {
       el.onclick = () => { state.selectedServerIdx = parseInt(el.dataset.srvIdx, 10) || 0; render(); };
     });
-    mc.querySelectorAll('[data-play-ep]').forEach(el => {
-      el.onclick = () => {
-        const epIdx = parseInt(el.dataset.playEp, 10) || 0;
-        openPlayer(state.detailData.movie, state.detailData.episodes || [], state.selectedServerIdx, epIdx);
+
+    const bindDetailEpPlay = () => {
+      mc.querySelectorAll('[data-play-ep]').forEach(el => {
+        el.onclick = () => {
+          const epIdx = parseInt(el.dataset.playEp, 10) || 0;
+          openPlayer(state.detailData.movie, state.detailData.episodes || [], state.selectedServerIdx, epIdx);
+        };
+      });
+    };
+    bindDetailEpPlay();
+
+    const epSearch = document.getElementById('epSearchInput');
+    if (epSearch && state.detailData?.movie) {
+      epSearch.oninput = (e) => {
+        state.epFilter = e.target.value;
+        const m = state.detailData.movie;
+        const srv = (state.detailData.episodes || [])[state.selectedServerIdx] || { server_data: [] };
+        const hist = state.history.find(h => h.slug === m.slug);
+        const grid = document.getElementById('detailEpGrid');
+        if (grid) {
+          grid.innerHTML = buildEpisodeButtonsHtml(m.slug, srv.server_data, hist ? hist.episodeIndex : -1);
+          bindDetailEpPlay();
+        }
       };
-    });
+    }
+
     const dPlay = document.getElementById('btnDetailPlay');
     if (dPlay) dPlay.onclick = () => {
       const m = state.detailData.movie;
@@ -1369,10 +2351,119 @@
     };
 
     const btnProbe = document.getElementById('btnToggleProbe');
-    if (btnProbe) btnProbe.onclick = () => { state.monitor.liveProbe = !state.monitor.liveProbe; render(); };
+    if (btnProbe) btnProbe.onclick = () => {
+      state.monitor.liveProbe = !state.monitor.liveProbe;
+      refreshMonitorChartsIfVisible();
+    };
     const btnSpeed = document.getElementById('btnRunSpeedtest');
-    if (btnSpeed) btnSpeed.onclick = () => { toast('Đang đo Speedtest...'); pollMonitor(true); };
+    if (btnSpeed) btnSpeed.onclick = () => { toast('Đang đo Speedtest...'); pollMonitor('full'); };
   }
+
+  function focusSearchTab() {
+    state.tab = 'search';
+    state.detailSlug = null;
+    stopMonitorLoop();
+    render();
+    const inp = document.getElementById('searchInput');
+    if (inp) { inp.focus(); inp.select(); }
+  }
+
+  document.addEventListener('keydown', (e) => {
+    if (e.key === 'F11') {
+      e.preventDefault();
+      windowOp('fullscreen');
+      return;
+    }
+
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (!playerCtrl.isOpen()) focusSearchTab();
+      return;
+    }
+
+    if (e.key === 'Escape') {
+      if (state.desktop.fullscreen) {
+        e.preventDefault();
+        windowOp('unfullscreen');
+        return;
+      }
+      if (playerCtrl.isDrawerOpen()) {
+        e.preventDefault();
+        playerCtrl.closeDrawer();
+        return;
+      }
+      if (playerCtrl.isOpen()) {
+        e.preventDefault();
+        playerCtrl.close();
+        return;
+      }
+      const modalRoot = document.getElementById('modalRoot');
+      if (modalRoot && modalRoot.innerHTML.trim()) {
+        e.preventDefault();
+        modalRoot.innerHTML = '';
+        return;
+      }
+      if (state.detailSlug) {
+        e.preventDefault();
+        state.detailSlug = null;
+        render();
+        return;
+      }
+      if (state.tab === 'settings' && state.settingsSubPage !== 'main') {
+        e.preventDefault();
+        state.settingsSubPage = 'main';
+        stopMonitorLoop();
+        render();
+        return;
+      }
+      return;
+    }
+
+    const activeTag = document.activeElement?.tagName;
+    const isTyping = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+    if (isTyping) return;
+
+    if (e.key === '/' && !playerCtrl.isOpen()) {
+      e.preventDefault();
+      focusSearchTab();
+      return;
+    }
+
+    if (!playerCtrl.isOpen()) return;
+
+    const k = e.key.toLowerCase();
+    if (e.code === 'Space' || k === 'k') {
+      e.preventDefault();
+      playerCtrl.togglePlay();
+    } else if (e.key === 'ArrowLeft' || k === 'j') {
+      e.preventDefault();
+      playerCtrl.seekBy(-10);
+    } else if (e.key === 'ArrowRight' || k === 'l') {
+      e.preventDefault();
+      playerCtrl.seekBy(10);
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      playerCtrl.adjustVolume(0.05);
+    } else if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      playerCtrl.adjustVolume(-0.05);
+    } else if (k === 'm') {
+      e.preventDefault();
+      playerCtrl.toggleMute();
+    } else if (k === 'f') {
+      e.preventDefault();
+      playerCtrl.toggleFullscreen();
+    } else if (k === 'n') {
+      e.preventDefault();
+      playerCtrl.nextEp();
+    } else if (k === 'p') {
+      e.preventDefault();
+      playerCtrl.prevEp();
+    } else if (k === 's') {
+      e.preventDefault();
+      playerCtrl.triggerSkip();
+    }
+  });
 
   document.querySelectorAll('.nav-item, .bnav-item').forEach(btn => {
     btn.onclick = () => {
@@ -1384,7 +2475,6 @@
     };
   });
 
-  document.getElementById('btnPinToggle').onclick = () => windowOp(state.desktop.alwaysOnTop ? 'unpin' : 'pin');
   document.getElementById('btnFullscreen').onclick = () => windowOp('fullscreen');
   document.getElementById('btnAccount').onclick = openAuthModal;
   document.getElementById('sidebarUserCard').onclick = openAuthModal;
@@ -1399,4 +2489,5 @@
   syncDesktopChrome();
   bootstrapAuth();
   loadDiscover();
+  resetHeroAutoTimer();
 })();

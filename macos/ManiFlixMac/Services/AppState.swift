@@ -25,7 +25,6 @@ final class AppState: ObservableObject {
     @Published var activeEngine: MacPlayerEngine?
     @Published var isPlayerPresented = false
     @Published var isPhoneMode = false
-    @Published var isWindowPinned = false
     @Published var globalBannerMessage: String?
 
     private let blockedKey = "prefs.blockedMovies.v1"
@@ -201,13 +200,6 @@ final class AppState: ObservableObject {
         frame.size.height += dh
         frame.origin.y -= dh
         window.setFrame(frame, display: true, animate: true)
-    }
-
-    func toggleWindowPinned() {
-        isWindowPinned.toggle()
-        for win in NSApp.windows {
-            win.level = isWindowPinned ? .floating : .normal
-        }
     }
 
     private func persistBlocked() {

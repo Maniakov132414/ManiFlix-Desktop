@@ -102,6 +102,13 @@ struct DiscoverView: View {
     @State private var heroSelection: Int = 0
     @State private var isLoading = true
     @State private var isLoadingFilter = false
+    @State private var latestPage = 1
+    @State private var isLoadingMoreLatest = false
+    @State private var hasMoreLatest = true
+    @State private var filterPage = 1
+    @State private var isLoadingMoreFilter = false
+    @State private var hasMoreFilter = true
+    @State private var startingHeroPlaySlug: String?
     @State private var errorMsg: String?
 
     private var visibleHero: [MovieItem] { heroMovies.filter { !appState.isBlocked(slug: $0.slug) } }
@@ -165,12 +172,24 @@ struct DiscoverView: View {
                             horizontalRail(title: "Phim bộ mới", items: visibleSeries)
                             horizontalRail(title: "Phim lẻ tuyển chọn", items: visibleSingle)
                             horizontalRail(title: "Hoạt hình & Anime", items: visibleAnime)
-                            gridSection(title: "Mới cập nhật", items: visibleHero)
+                            gridSection(
+                                title: "Mới cập nhật",
+                                items: visibleHero,
+                                hasMore: hasMoreLatest,
+                                isLoadingMore: isLoadingMoreLatest,
+                                onLoadMore: { Task { await loadMoreLatest() } }
+                            )
                         } else {
                             if isLoadingFilter && visibleFiltered.isEmpty {
                                 ProgressView().tint(prefs.currentAccentColor).frame(maxWidth: .infinity).padding(.vertical, 60)
                             } else {
-                                gridSection(title: selectedCategory.rawValue, items: visibleFiltered)
+                                gridSection(
+                                    title: selectedCategory.rawValue,
+                                    items: visibleFiltered,
+                                    hasMore: hasMoreFilter,
+                                    isLoadingMore: isLoadingMoreFilter,
+                                    onLoadMore: { Task { await loadMoreCategoryFeed(for: selectedCategory) } }
+                                )
                             }
                         }
                     }
@@ -246,9 +265,15 @@ struct DiscoverView: View {
                 }
 
                 HStack(spacing: 10) {
-                    NavigationLink(destination: MovieDetailView(slug: movie.slug, seedMovie: movie)) {
+                    Button {
+                        Task { await playHeroDirectly(movie) }
+                    } label: {
                         HStack(spacing: 6) {
-                            Image(systemName: "play.fill")
+                            if startingHeroPlaySlug == movie.slug {
+                                ProgressView().scaleEffect(0.75).tint(.white)
+                            } else {
+                                Image(systemName: "play.fill")
+                            }
                             Text("Xem ngay")
                         }
                         .font(.subheadline.weight(.semibold))
@@ -258,6 +283,19 @@ struct DiscoverView: View {
                         .clipShape(Capsule())
                     }
                     .buttonStyle(.plain)
+                    .disabled(startingHeroPlaySlug != nil)
+
+                    NavigationLink(destination: MovieDetailView(slug: movie.slug, seedMovie: movie)) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "info.circle")
+                            Text("Chi tiết")
+                        }
+                        .font(.subheadline.weight(.medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14).padding(.vertical, 9)
+                    }
+                    .buttonStyle(.plain)
+                    .adaptiveGlassCapsule(interactive: true)
 
                     Button {
                         Task { await appState.toggleFavoriteItem(movie) }
@@ -342,7 +380,13 @@ struct DiscoverView: View {
         }
     }
 
-    private func gridSection(title: String, items: [MovieItem]) -> some View {
+    private func gridSection(
+        title: String,
+        items: [MovieItem],
+        hasMore: Bool = false,
+        isLoadingMore: Bool = false,
+        onLoadMore: (() -> Void)? = nil
+    ) -> some View {
         let cols = Array(repeating: GridItem(.flexible(), spacing: 12), count: ManiFlixTheme.adaptiveGridColumnCount(width: containerWidth))
         return VStack(alignment: .leading, spacing: 12) {
             Text(title)
@@ -359,19 +403,47 @@ struct DiscoverView: View {
                 }
             }
             .padding(.horizontal, 18)
+
+            if hasMore, let onLoadMore = onLoadMore {
+                HStack {
+                    Spacer()
+                    Button(action: onLoadMore) {
+                        HStack(spacing: 8) {
+                            if isLoadingMore {
+                                ProgressView().scaleEffect(0.75)
+                            } else {
+                                Image(systemName: "plus.circle")
+                            }
+                            Text(isLoadingMore ? "Đang tải..." : "Xem thêm")
+                        }
+                        .font(.subheadline.weight(.semibold))
+                        .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
+                        .padding(.horizontal, 20).padding(.vertical, 10)
+                    }
+                    .buttonStyle(.plain)
+                    .adaptiveGlassCapsule(interactive: true)
+                    .disabled(isLoadingMore)
+                    Spacer()
+                }
+                .padding(.top, 6)
+            }
         }
     }
 
     private func loadAll() async {
         isLoading = true
         errorMsg = nil
+        latestPage = 1
+        hasMoreLatest = true
         do {
             async let latestTask = ManiFlixAPI.shared.fetchMovies(page: 1)
             async let seriesTask = ManiFlixAPI.shared.fetchCategory(type: "phim-bo", page: 1)
             async let singleTask = ManiFlixAPI.shared.fetchCategory(type: "phim-le", page: 1)
             async let animeTask = ManiFlixAPI.shared.fetchCategory(type: "hoat-hinh", page: 1)
             let latest = try await latestTask
-            self.heroMovies = latest.items ?? []
+            let items = latest.items ?? []
+            self.heroMovies = items
+            self.hasMoreLatest = !items.isEmpty
             self.seriesMovies = (try? await seriesTask)?.items ?? []
             self.singleMovies = (try? await singleTask)?.items ?? []
             self.animeMovies = (try? await animeTask)?.items ?? []
@@ -381,18 +453,88 @@ struct DiscoverView: View {
         isLoading = false
     }
 
+    private func loadMoreLatest() async {
+        guard !isLoadingMoreLatest && hasMoreLatest else { return }
+        isLoadingMoreLatest = true
+        let nextPage = latestPage + 1
+        if let res = try? await ManiFlixAPI.shared.fetchMovies(page: nextPage) {
+            let incoming = res.items ?? []
+            let existing = Set(heroMovies.map(\.slug))
+            let fresh = incoming.filter { !existing.contains($0.slug) }
+            if fresh.isEmpty {
+                hasMoreLatest = false
+            } else {
+                heroMovies.append(contentsOf: fresh)
+                latestPage = nextPage
+            }
+        } else {
+            hasMoreLatest = false
+        }
+        isLoadingMoreLatest = false
+    }
+
+    private func fetchFeedItems(for cat: DiscoverCategoryFilter, page: Int) async throws -> [MovieItem] {
+        switch cat.endpoint {
+        case .latest:
+            return (try await ManiFlixAPI.shared.fetchMovies(page: page)).items ?? []
+        case .category(let t):
+            return (try await ManiFlixAPI.shared.fetchCategory(type: t, page: page)).items ?? []
+        case .genre(let s):
+            return (try await ManiFlixAPI.shared.fetchGenre(slug: s, page: page)).items ?? []
+        }
+    }
+
     private func loadCategoryFeed(for cat: DiscoverCategoryFilter) async {
         isLoadingFilter = true
+        filterPage = 1
+        hasMoreFilter = true
         do {
-            switch cat.endpoint {
-            case .latest:
-                filteredMovies = (try await ManiFlixAPI.shared.fetchMovies(page: 1)).items ?? []
-            case .category(let t):
-                filteredMovies = (try await ManiFlixAPI.shared.fetchCategory(type: t, page: 1)).items ?? []
-            case .genre(let s):
-                filteredMovies = (try await ManiFlixAPI.shared.fetchGenre(slug: s, page: 1)).items ?? []
-            }
-        } catch {}
+            let items = try await fetchFeedItems(for: cat, page: 1)
+            filteredMovies = items
+            hasMoreFilter = !items.isEmpty
+        } catch {
+            hasMoreFilter = false
+        }
         isLoadingFilter = false
+    }
+
+    private func loadMoreCategoryFeed(for cat: DiscoverCategoryFilter) async {
+        guard !isLoadingMoreFilter && hasMoreFilter else { return }
+        isLoadingMoreFilter = true
+        let nextPage = filterPage + 1
+        if let incoming = try? await fetchFeedItems(for: cat, page: nextPage) {
+            let existing = Set(filteredMovies.map(\.slug))
+            let fresh = incoming.filter { !existing.contains($0.slug) }
+            if fresh.isEmpty {
+                hasMoreFilter = false
+            } else {
+                filteredMovies.append(contentsOf: fresh)
+                filterPage = nextPage
+            }
+        } else {
+            hasMoreFilter = false
+        }
+        isLoadingMoreFilter = false
+    }
+
+    private func playHeroDirectly(_ movie: MovieItem) async {
+        guard startingHeroPlaySlug == nil else { return }
+        startingHeroPlaySlug = movie.slug
+        defer { startingHeroPlaySlug = nil }
+        do {
+            let res = try await ManiFlixAPI.shared.fetchMovieDetail(slug: movie.slug)
+            if let detail = res.movie, let servers = res.episodes, !servers.isEmpty {
+                let epCount = servers[0].server_data.count
+                let savedEp = appState.history.first(where: { $0.slug == detail.slug })?.episodeIndex ?? 0
+                let targetIdx = (savedEp >= 0 && savedEp < epCount) ? savedEp : 0
+                if epCount > 0 {
+                    appState.startPlayback(movie: detail, servers: servers, serverIndex: 0, episodeIndex: targetIdx)
+                    return
+                }
+            }
+            appState.showBanner("Phim này chưa có tập để phát trực tiếp")
+        } catch {
+            appState.showBanner("Không thể tải luồng phát cho \"\(movie.name)\"")
+        }
     }
 }

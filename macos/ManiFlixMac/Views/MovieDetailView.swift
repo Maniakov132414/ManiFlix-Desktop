@@ -14,6 +14,7 @@ struct MovieDetailView: View {
     @State private var franchiseSeasons: [FranchiseSeason] = []
     @State private var relatedMovies: [MovieItem] = []
     @State private var selectedServerIdx = 0
+    @State private var episodeSearchQuery = ""
     @State private var isFranchiseExpanded = true
     @State private var isLoading = true
     @State private var errorMsg: String?
@@ -42,6 +43,7 @@ struct MovieDetailView: View {
                                     headerBanner
                                     actionButtonsRow(movie: movie)
                                     metadataBadges(movie: movie)
+                                    creditsSection(movie: movie)
                                     if !movie.plainSynopsis.isEmpty { synopsisSection(movie: movie) }
                                 }
                                 .frame(width: 340, alignment: .leading)
@@ -60,6 +62,7 @@ struct MovieDetailView: View {
                                 headerBanner
                                 actionButtonsRow(movie: movie)
                                 metadataBadges(movie: movie)
+                                creditsSection(movie: movie)
                                 if franchiseSeasons.count > 1 { franchiseSection }
                                 episodeSelectorSection(movie: movie)
                                 if !movie.plainSynopsis.isEmpty { synopsisSection(movie: movie) }
@@ -131,11 +134,50 @@ struct MovieDetailView: View {
 
     private func metadataBadges(movie: MovieDetail) -> some View {
         WrappingFlowLayout(horizontalSpacing: 7, verticalSpacing: 7) {
+            if let year = movie.year?.value, year > 0 { badgePill(String(year)) }
             if let q = movie.quality, !q.isEmpty { badgePill(q) }
+            if let lang = movie.lang, !lang.isEmpty { badgePill(lang) }
+            if let time = movie.time, !time.isEmpty { badgePill(time) }
             if let ep = movie.episode_current, !ep.isEmpty { badgePill(ep) }
+            ForEach((movie.country ?? []).prefix(3)) { c in
+                if let name = c.name, !name.isEmpty { badgePill(name) }
+            }
             ForEach((movie.category ?? []).prefix(5)) { cat in
                 if let name = cat.name, !name.isEmpty { badgePill(name) }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func creditsSection(movie: MovieDetail) -> some View {
+        let countries = (movie.country ?? []).compactMap(\.name).filter { !$0.isEmpty }.joined(separator: ", ")
+        let directors = (movie.director ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.joined(separator: ", ")
+        let actors = (movie.actor ?? []).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }.prefix(10).joined(separator: ", ")
+        if !countries.isEmpty || !directors.isEmpty || !actors.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Thông tin chi tiết")
+                    .font(.system(size: 15, weight: .bold))
+                    .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
+                if !countries.isEmpty { creditRow(label: "Quốc gia", value: countries) }
+                if !directors.isEmpty { creditRow(label: "Đạo diễn", value: directors) }
+                if !actors.isEmpty { creditRow(label: "Diễn viên", value: actors) }
+            }
+            .padding(14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .adaptiveGlassCard(cornerRadius: 14)
+        }
+    }
+
+    private func creditRow(label: String, value: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Text(label)
+                .font(.caption.weight(.semibold))
+                .foregroundColor(ManiFlixTheme.secondaryText(colorScheme))
+                .frame(width: 68, alignment: .leading)
+            Text(value)
+                .font(.caption)
+                .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -213,23 +255,70 @@ struct MovieDetailView: View {
                 }
 
                 if let activeSrv = servers[safe: selectedServerIdx] {
-                    Text("Danh sách tập (\(activeSrv.server_data.count))")
-                        .font(.system(size: 16, weight: .bold))
-                        .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
+                    let trimmedEp = episodeSearchQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+                    let filteredEps = Array(activeSrv.server_data.enumerated()).filter { _, ep in
+                        trimmedEp.isEmpty || ep.name.localizedCaseInsensitiveContains(trimmedEp)
+                    }
 
-                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 74), spacing: 8)], spacing: 8) {
-                        ForEach(Array(activeSrv.server_data.enumerated()), id: \.offset) { epIdx, ep in
-                            let isWatched = watchedIdx == epIdx
-                            Button {
-                                appState.startPlayback(movie: movie, servers: servers, serverIndex: selectedServerIdx, episodeIndex: epIdx)
-                            } label: {
-                                Text(ep.name)
-                                    .font(.caption.weight(isWatched ? .semibold : .medium))
-                                    .foregroundColor(isWatched ? prefs.currentAccentColor : ManiFlixTheme.primaryText(colorScheme))
-                                    .frame(maxWidth: .infinity).padding(.vertical, 9)
+                    HStack(spacing: 10) {
+                        Text("Danh sách tập (\(activeSrv.server_data.count))")
+                            .font(.system(size: 16, weight: .bold))
+                            .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
+                        Spacer()
+                        if activeSrv.server_data.count > 1 {
+                            HStack(spacing: 6) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.caption)
+                                    .foregroundColor(ManiFlixTheme.secondaryText(colorScheme))
+                                TextField("Tìm tập...", text: $episodeSearchQuery)
+                                    .textFieldStyle(.plain)
+                                    .font(.caption)
+                                    .frame(width: 110)
+                                if !episodeSearchQuery.isEmpty {
+                                    Button { episodeSearchQuery = "" } label: {
+                                        Image(systemName: "xmark.circle.fill")
+                                            .font(.caption)
+                                            .foregroundColor(ManiFlixTheme.secondaryText(colorScheme))
+                                    }
+                                    .buttonStyle(.plain)
+                                }
                             }
-                            .buttonStyle(.plain)
-                            .adaptiveGlassCard(cornerRadius: 9, interactive: true, tint: isWatched ? prefs.currentAccentColor : nil)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .adaptiveGlassCapsule(interactive: true)
+                        }
+                    }
+
+                    if filteredEps.isEmpty {
+                        Text("Không tìm thấy tập phù hợp với \"\(episodeSearchQuery)\"")
+                            .font(.caption)
+                            .foregroundColor(ManiFlixTheme.secondaryText(colorScheme))
+                            .padding(.vertical, 12)
+                    } else {
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 78), spacing: 8)], spacing: 8) {
+                            ForEach(filteredEps, id: \.offset) { epIdx, ep in
+                                let isWatched = watchedIdx == epIdx
+                                let ratio = isWatched ? (resumeEntry?.progressRatio ?? 0) : 0
+                                Button {
+                                    appState.startPlayback(movie: movie, servers: servers, serverIndex: selectedServerIdx, episodeIndex: epIdx)
+                                } label: {
+                                    VStack(spacing: 4) {
+                                        Text(ep.name)
+                                            .font(.caption.weight(isWatched ? .semibold : .medium))
+                                            .foregroundColor(isWatched ? prefs.currentAccentColor : ManiFlixTheme.primaryText(colorScheme))
+                                            .lineLimit(1)
+                                        if ratio > 0.02 {
+                                            ProgressView(value: ratio)
+                                                .tint(prefs.currentAccentColor)
+                                                .scaleEffect(x: 1, y: 0.7)
+                                                .padding(.horizontal, 6)
+                                        }
+                                    }
+                                    .frame(maxWidth: .infinity)
+                                    .padding(.vertical, 9)
+                                }
+                                .buttonStyle(.plain)
+                                .adaptiveGlassCard(cornerRadius: 9, interactive: true, tint: isWatched ? prefs.currentAccentColor : nil)
+                            }
                         }
                     }
                 }

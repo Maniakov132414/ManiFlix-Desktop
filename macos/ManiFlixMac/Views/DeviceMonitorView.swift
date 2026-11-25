@@ -6,8 +6,10 @@ struct DeviceMonitorView: View {
     @ObservedObject private var prefs = AppPreferences.shared
     @Environment(\.colorScheme) private var colorScheme
 
-    @State private var liveProbeEnabled = true
+    @State private var liveProbeEnabled = false
     @State private var isTesting = false
+    @State private var probeSourceLabel = "Cloudflare Edge"
+    @State private var statusText = ""
     @State private var dlMbps: Double = 0
     @State private var ulMbps: Double = 0
     @State private var pingMs: Double = 0
@@ -35,14 +37,28 @@ struct DeviceMonitorView: View {
         ScrollView {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(spacing: 10) {
-                    Text("LIVE").font(.caption2.bold()).foregroundColor(.green)
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .adaptiveGlassCapsule(interactive: false)
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(liveProbeEnabled ? Color.green : Color.secondary.opacity(0.6))
+                            .frame(width: 7, height: 7)
+                        Text(liveProbeEnabled ? "LIVE" : probeSourceLabel)
+                            .font(.caption2.bold())
+                            .foregroundColor(liveProbeEnabled ? .green : ManiFlixTheme.secondaryText(colorScheme))
+                    }
+                    .padding(.horizontal, 9).padding(.vertical, 4)
+                    .adaptiveGlassCapsule(interactive: false)
+
+                    if !statusText.isEmpty {
+                        Text(statusText)
+                            .font(.caption)
+                            .foregroundColor(ManiFlixTheme.secondaryText(colorScheme))
+                    }
+
                     Spacer()
                     Toggle("Live Probe", isOn: $liveProbeEnabled).toggleStyle(.switch).labelsHidden()
-                    Text(liveProbeEnabled ? "Live Probe: BẬT" : "Live Probe: TẮT").font(.caption)
+                    Text(liveProbeEnabled ? "Live Probe: BẬT (1 MB / 8s)" : "Live Probe: TẮT").font(.caption)
                     Button(isTesting ? "Đang đo..." : "Đo Speedtest Ngay") {
-                        Task { await runSample(runProbe: true) }
+                        Task { await runFullSpeedtest() }
                     }
                     .buttonStyle(.borderedProminent).tint(prefs.currentAccentColor)
                     .disabled(isTesting)
@@ -85,11 +101,18 @@ struct DeviceMonitorView: View {
         .background(ManiFlixTheme.background(scheme: colorScheme).ignoresSafeArea())
         .navigationTitle("Kiểm tra mạng & Thiết bị")
         .task {
-            await runSample(runProbe: true)
+            await runFullSpeedtest()
             while !Task.isCancelled {
-                try? await Task.sleep(nanoseconds: 2_500_000_000)
+                try? await Task.sleep(nanoseconds: 8_000_000_000)
                 if Task.isCancelled { break }
-                await runSample(runProbe: liveProbeEnabled)
+                if liveProbeEnabled {
+                    await runLightweightSample()
+                }
+            }
+        }
+        .onChange(of: liveProbeEnabled) { _, enabled in
+            if enabled && !isTesting {
+                Task { await runLightweightSample() }
             }
         }
     }
@@ -183,30 +206,66 @@ struct DeviceMonitorView: View {
         }
     }
 
-    private func runSample(runProbe: Bool) async {
+    private func runFullSpeedtest() async {
+        guard !isTesting else { return }
         isTesting = true
         appRssMB = Self.currentProcessRSSMB()
-        let t0 = CFAbsoluteTimeGetCurrent()
-        if let stats = try? await ManiFlixAPI.shared.fetchNetStats() {
+
+        statusText = "Đang đo Ping / Jitter..."
+        async let statsTask = ManiFlixAPI.shared.fetchNetStats()
+        if let rtt = try? await ManiFlixAPI.shared.measureWarmPingJitter() {
+            self.pingMs = rtt.pingMs
+            self.jitterMs = rtt.jitterMs
+            self.probeSourceLabel = rtt.source
+        }
+        if let stats = try? await statsTask {
             self.netStats = stats
-            let elapsed = max(1.0, (CFAbsoluteTimeGetCurrent() - t0) * 1000.0)
-            let prev = self.pingMs > 0 ? self.pingMs : elapsed
-            self.jitterMs = abs(elapsed - prev)
-            self.pingMs = elapsed
         }
-        if runProbe {
-            if let dl = try? await ManiFlixAPI.shared.measureDownloadProbe(kb: 256) {
-                self.dlMbps = dl.mbps
-            }
-            if let ul = try? await ManiFlixAPI.shared.measureUploadProbe(bytesCount: 128 * 1024) {
-                self.ulMbps = ul
-            }
+
+        statusText = "Đang đo tải xuống (4 luồng)..."
+        if let dl = try? await ManiFlixAPI.shared.measureParallelDownload() {
+            self.dlMbps = dl.mbps
+            self.probeSourceLabel = dl.source
         }
+
+        statusText = "Đang đo tải lên (2 luồng)..."
+        if let ul = try? await ManiFlixAPI.shared.measureParallelUpload() {
+            self.ulMbps = ul.mbps
+        }
+
+        appendTelemetrySample()
+        statusText = ""
+        isTesting = false
+    }
+
+    private func runLightweightSample() async {
+        guard !isTesting else { return }
+        isTesting = true
+        appRssMB = Self.currentProcessRSSMB()
+        async let statsTask = ManiFlixAPI.shared.fetchNetStats()
+        async let rttTask = ManiFlixAPI.shared.measureWarmPingJitter()
+        async let dlTask = ManiFlixAPI.shared.measureLightweightDownloadProbe()
+
+        if let stats = try? await statsTask { self.netStats = stats }
+        if let rtt = try? await rttTask {
+            self.pingMs = rtt.pingMs
+            self.jitterMs = rtt.jitterMs
+            self.probeSourceLabel = rtt.source
+        }
+        if let dl = try? await dlTask {
+            self.dlMbps = dl.mbps
+            self.probeSourceLabel = dl.source
+        }
+
+        appendTelemetrySample()
+        isTesting = false
+    }
+
+    private func appendTelemetrySample() {
         dlHistory.append(dlMbps); if dlHistory.count > 24 { dlHistory.removeFirst() }
         ulHistory.append(ulMbps); if ulHistory.count > 24 { ulHistory.removeFirst() }
         pingHistory.append(pingMs); if pingHistory.count > 24 { pingHistory.removeFirst() }
         serverCpuHistory.append(netStats?.cpuPct ?? 0); if serverCpuHistory.count > 24 { serverCpuHistory.removeFirst() }
-        isTesting = false
     }
 
     static func sysctlString(_ key: String) -> String? {

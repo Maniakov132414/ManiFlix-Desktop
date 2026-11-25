@@ -119,13 +119,6 @@ struct MacRootShell: View {
         .toolbar {
             ToolbarItemGroup(placement: .automatic) {
                 Button {
-                    appState.toggleWindowPinned()
-                } label: {
-                    Label("Ghim nổi", systemImage: appState.isWindowPinned ? "pin.fill" : "pin")
-                }
-                .help("Ghim cửa sổ luôn nổi")
-
-                Button {
                     appState.showAuthSheet = true
                 } label: {
                     Image(systemName: appState.isLoggedIn ? "person.crop.circle.fill" : "person.crop.circle")

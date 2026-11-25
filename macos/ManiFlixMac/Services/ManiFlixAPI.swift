@@ -14,9 +14,23 @@ enum APIError: LocalizedError {
     }
 }
 
+struct SpeedtestPingResult: Sendable {
+    let pingMs: Double
+    let jitterMs: Double
+    let source: String
+}
+
+struct SpeedtestTransferResult: Sendable {
+    let mbps: Double
+    let bytes: Int64
+    let elapsedSec: Double
+    let source: String
+}
+
 final class ManiFlixAPI {
     static let shared = ManiFlixAPI()
     private let session: URLSession
+    private let speedSession: URLSession
     private let decoder = JSONDecoder()
     private let baseURL = "https://phim.maniakov.bond"
 
@@ -25,6 +39,14 @@ final class ManiFlixAPI {
         config.timeoutIntervalForRequest = 18
         config.timeoutIntervalForResource = 35
         self.session = URLSession(configuration: config)
+
+        let speedConfig = URLSessionConfiguration.ephemeral
+        speedConfig.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        speedConfig.urlCache = nil
+        speedConfig.httpMaximumConnectionsPerHost = 8
+        speedConfig.timeoutIntervalForRequest = 12
+        speedConfig.timeoutIntervalForResource = 45
+        self.speedSession = URLSession(configuration: speedConfig)
     }
 
     func cleanM3U8URL(from rawM3U8: String) -> URL? {
@@ -168,34 +190,174 @@ final class ManiFlixAPI {
         try await request(path: "/api/net-stats")
     }
 
-    func measureDownloadProbe(kb: Int = 256) async throws -> (mbps: Double, bytes: Int, pingMs: Double) {
-        guard let url = URL(string: "\(baseURL)/api/net-probe?kb=\(kb)") else { throw APIError.invalidURL }
-        var req = URLRequest(url: url)
-        req.cachePolicy = .reloadIgnoringLocalCacheData
-        req.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
-        let start = CFAbsoluteTimeGetCurrent()
-        let (data, response) = try await session.data(for: req)
-        let elapsed = max(0.004, CFAbsoluteTimeGetCurrent() - start)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.badStatus(http.statusCode, "Probe error")
+    func measureWarmPingJitter() async throws -> SpeedtestPingResult {
+        do {
+            let (ping, jitter) = try await runWarmRTTSeries(endpoint: "https://speed.cloudflare.com/__down?bytes=0")
+            return SpeedtestPingResult(pingMs: ping, jitterMs: jitter, source: "Cloudflare Edge")
+        } catch {
+            let (ping, jitter) = try await runWarmRTTSeries(endpoint: "\(baseURL)/api/net-probe?kb=1")
+            return SpeedtestPingResult(pingMs: ping, jitterMs: jitter, source: "ManiFlix Server")
         }
-        let mbps = (Double(data.count) * 8.0) / (elapsed * 1_000_000.0)
-        return (mbps, data.count, elapsed * 1000.0)
     }
 
-    func measureUploadProbe(bytesCount: Int = 128 * 1024) async throws -> Double {
-        guard let url = URL(string: "\(baseURL)/api/net-up") else { throw APIError.invalidURL }
-        var req = URLRequest(url: url)
-        req.httpMethod = "POST"
-        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-        req.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
-        req.httpBody = Data(repeating: 0x4D, count: bytesCount)
-        let start = CFAbsoluteTimeGetCurrent()
-        let (_, response) = try await session.data(for: req)
-        let elapsed = max(0.004, CFAbsoluteTimeGetCurrent() - start)
-        if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
-            throw APIError.badStatus(http.statusCode, "Upload probe error")
+    private func runWarmRTTSeries(endpoint: String) async throws -> (pingMs: Double, jitterMs: Double) {
+        let session = self.speedSession
+        func singleRTT() async throws -> Double {
+            let sep = endpoint.contains("?") ? "&" : "?"
+            guard let url = URL(string: "\(endpoint)\(sep)_t=\(UUID().uuidString)") else {
+                throw APIError.invalidURL
+            }
+            var req = URLRequest(url: url)
+            req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+            req.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+            req.setValue("ManiFlix-macOS/1.1", forHTTPHeaderField: "User-Agent")
+            let t0 = CFAbsoluteTimeGetCurrent()
+            let (_, response) = try await session.data(for: req)
+            let ms = max(1.0, (CFAbsoluteTimeGetCurrent() - t0) * 1000.0)
+            guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                throw APIError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0, "Ping probe error")
+            }
+            return ms
         }
-        return (Double(bytesCount) * 8.0) / (elapsed * 1_000_000.0)
+
+        // Discard 1 warm-up probe (DNS + TLS handshake) before measuring 4 sequential RTTs
+        _ = try await singleRTT()
+        var samples: [Double] = []
+        samples.reserveCapacity(4)
+        for _ in 0..<4 {
+            samples.append(try await singleRTT())
+        }
+        let avg = samples.reduce(0, +) / Double(samples.count)
+        var diffs: [Double] = []
+        for i in 1..<samples.count {
+            diffs.append(abs(samples[i] - samples[i - 1]))
+        }
+        let jitter = diffs.isEmpty ? 0.0 : diffs.reduce(0, +) / Double(diffs.count)
+        return (avg, jitter)
+    }
+
+    func measureParallelDownload(streams: Int = 4, cfBytes: Int = 6_000_000, fallbackKB: Int = 2048) async throws -> SpeedtestTransferResult {
+        do {
+            let res = try await runParallelBytesDownload(streams: streams) {
+                URL(string: "https://speed.cloudflare.com/__down?bytes=\(cfBytes)&_r=\(UUID().uuidString)")
+            }
+            return SpeedtestTransferResult(mbps: res.mbps, bytes: res.bytes, elapsedSec: res.elapsed, source: "Cloudflare Edge")
+        } catch {
+            let base = self.baseURL
+            let res = try await runParallelBytesDownload(streams: streams) {
+                URL(string: "\(base)/api/net-probe?kb=\(fallbackKB)&_r=\(UUID().uuidString)")
+            }
+            return SpeedtestTransferResult(mbps: res.mbps, bytes: res.bytes, elapsedSec: res.elapsed, source: "ManiFlix Server")
+        }
+    }
+
+    func measureLightweightDownloadProbe() async throws -> SpeedtestTransferResult {
+        try await measureParallelDownload(streams: 1, cfBytes: 1_000_000, fallbackKB: 1024)
+    }
+
+    private func runParallelBytesDownload(streams: Int, urlBuilder: @Sendable () -> URL?) async throws -> (mbps: Double, bytes: Int64, elapsed: Double) {
+        struct StreamTiming: Sendable {
+            let bytes: Int64
+            let bodyStart: CFAbsoluteTime
+            let bodyEnd: CFAbsoluteTime
+        }
+
+        let session = self.speedSession
+        let chunks = try await withThrowingTaskGroup(of: StreamTiming.self) { group in
+            for _ in 0..<streams {
+                guard let url = urlBuilder() else { throw APIError.invalidURL }
+                group.addTask {
+                    var req = URLRequest(url: url)
+                    req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                    req.setValue("no-store", forHTTPHeaderField: "Cache-Control")
+                    req.setValue("ManiFlix-macOS/1.1", forHTTPHeaderField: "User-Agent")
+                    let (asyncBytes, response) = try await session.bytes(for: req)
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        throw APIError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0, "Download probe error")
+                    }
+                    // Start timing body transfer AFTER HTTP response headers arrive
+                    let bodyStart = CFAbsoluteTimeGetCurrent()
+                    var count: Int64 = 0
+                    for try await _ in asyncBytes {
+                        count += 1
+                    }
+                    let bodyEnd = CFAbsoluteTimeGetCurrent()
+                    return StreamTiming(bytes: count, bodyStart: bodyStart, bodyEnd: bodyEnd)
+                }
+            }
+            var collected: [StreamTiming] = []
+            for try await item in group {
+                collected.append(item)
+            }
+            return collected
+        }
+
+        guard let minStart = chunks.map(\.bodyStart).min(),
+              let maxEnd = chunks.map(\.bodyEnd).max() else {
+            throw APIError.badStatus(0, "Empty download probe")
+        }
+        let totalBytes = chunks.reduce(Int64(0)) { $0 + $1.bytes }
+        let elapsed = max(0.01, maxEnd - minStart)
+        let mbps = (Double(totalBytes) * 8.0) / (elapsed * 1_000_000.0)
+        return (mbps, totalBytes, elapsed)
+    }
+
+    func measureParallelUpload(streams: Int = 2, cfBytes: Int = 1_500_000, fallbackBytes: Int = 512 * 1024) async throws -> SpeedtestTransferResult {
+        do {
+            let res = try await runParallelUpload(streams: streams, payloadBytes: cfBytes) {
+                URL(string: "https://speed.cloudflare.com/__up?_r=\(UUID().uuidString)")
+            }
+            return SpeedtestTransferResult(mbps: res.mbps, bytes: res.bytes, elapsedSec: res.elapsed, source: "Cloudflare Edge")
+        } catch {
+            let base = self.baseURL
+            let res = try await runParallelUpload(streams: streams, payloadBytes: fallbackBytes) {
+                URL(string: "\(base)/api/net-up?_r=\(UUID().uuidString)")
+            }
+            return SpeedtestTransferResult(mbps: res.mbps, bytes: res.bytes, elapsedSec: res.elapsed, source: "ManiFlix Server")
+        }
+    }
+
+    private func runParallelUpload(streams: Int, payloadBytes: Int, urlBuilder: @Sendable () -> URL?) async throws -> (mbps: Double, bytes: Int64, elapsed: Double) {
+        struct UploadTiming: Sendable {
+            let bytes: Int64
+            let start: CFAbsoluteTime
+            let end: CFAbsoluteTime
+        }
+
+        let session = self.speedSession
+        let payload = Data(repeating: 0x4D, count: payloadBytes)
+        let timings = try await withThrowingTaskGroup(of: UploadTiming.self) { group in
+            for _ in 0..<streams {
+                guard let url = urlBuilder() else { throw APIError.invalidURL }
+                group.addTask {
+                    var req = URLRequest(url: url)
+                    req.httpMethod = "POST"
+                    req.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+                    req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                    req.setValue("ManiFlix-macOS/1.1", forHTTPHeaderField: "User-Agent")
+                    let start = CFAbsoluteTimeGetCurrent()
+                    let (_, response) = try await session.upload(for: req, from: payload)
+                    let end = CFAbsoluteTimeGetCurrent()
+                    guard let http = response as? HTTPURLResponse, (200..<300).contains(http.statusCode) else {
+                        throw APIError.badStatus((response as? HTTPURLResponse)?.statusCode ?? 0, "Upload probe error")
+                    }
+                    return UploadTiming(bytes: Int64(payload.count), start: start, end: end)
+                }
+            }
+            var collected: [UploadTiming] = []
+            for try await item in group {
+                collected.append(item)
+            }
+            return collected
+        }
+
+        guard let minStart = timings.map(\.start).min(),
+              let maxEnd = timings.map(\.end).max() else {
+            throw APIError.badStatus(0, "Empty upload probe")
+        }
+        let totalBytes = timings.reduce(Int64(0)) { $0 + $1.bytes }
+        let elapsed = max(0.01, maxEnd - minStart)
+        let mbps = (Double(totalBytes) * 8.0) / (elapsed * 1_000_000.0)
+        return (mbps, totalBytes, elapsed)
     }
 }

@@ -63,7 +63,7 @@ fn run_self_test_if_requested() -> Option<i32> {
     Some(0)
 }
 
-fn snapshot_window_telemetry(window: &Window, always_on_top: bool) -> WindowTelemetry {
+fn snapshot_window_telemetry(window: &Window) -> WindowTelemetry {
     let scale = window.scale_factor();
     let phys = window.inner_size();
     let logical = phys.to_logical::<f64>(scale);
@@ -98,7 +98,6 @@ fn snapshot_window_telemetry(window: &Window, always_on_top: bool) -> WindowTele
         width,
         height,
         scale_factor: (scale * 100.0).round() / 100.0,
-        always_on_top,
         fullscreen,
         maximized,
         layout_mode,
@@ -210,8 +209,7 @@ fn main() {
         .build(&event_loop)
         .expect("Failed to create ManiFlix window");
 
-    let mut always_on_top = false;
-    let initial_tel = snapshot_window_telemetry(&window, always_on_top);
+    let initial_tel = snapshot_window_telemetry(&window);
     let shared_win = Arc::new(Mutex::new(initial_tel));
 
     let shared_win_proto = Arc::clone(&shared_win);
@@ -248,7 +246,7 @@ fn main() {
                     | WindowEvent::ScaleFactorChanged { .. },
                 ..
             } => {
-                let snap = snapshot_window_telemetry(&window, always_on_top);
+                let snap = snapshot_window_telemetry(&window);
                 if let Ok(mut guard) = shared_win.lock() {
                     *guard = snap.clone();
                 }
@@ -271,18 +269,6 @@ fn main() {
                         window.set_maximized(false);
                         window.set_inner_size(LogicalSize::new(1240.0, 800.0));
                     }
-                    "pin" => {
-                        always_on_top = true;
-                        window.set_always_on_top(true);
-                    }
-                    "unpin" => {
-                        always_on_top = false;
-                        window.set_always_on_top(false);
-                    }
-                    "togglepin" => {
-                        always_on_top = !always_on_top;
-                        window.set_always_on_top(always_on_top);
-                    }
                     "fullscreen" => {
                         let next_fs = window.fullscreen().is_none();
                         if next_fs {
@@ -300,7 +286,7 @@ fn main() {
                     _ => {}
                 }
 
-                let snap = snapshot_window_telemetry(&window, always_on_top);
+                let snap = snapshot_window_telemetry(&window);
                 if let Ok(mut guard) = shared_win.lock() {
                     *guard = snap.clone();
                 }

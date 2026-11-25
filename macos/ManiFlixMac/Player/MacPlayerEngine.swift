@@ -49,7 +49,10 @@ final class MacPlayerEngine: ObservableObject {
     @Published var errorMessage: String = ""
     @Published var currentTime: Double = 0
     @Published var duration: Double = 0
+    @Published var bufferedDuration: Double = 0
     @Published var playbackRate: Float = 1.0
+    @Published var isMuted: Bool = false
+    @Published var volume: Double = 1.0
     @Published var currentSourceLabel: String = "Chuẩn"
     @Published var adMarkers: [AdMarker] = []
     @Published var activeSkipPrompt: AdMarker?
@@ -78,6 +81,7 @@ final class MacPlayerEngine: ObservableObject {
         self.serverIndex = serverIndex
         self.episodeIndex = episodeIndex
         self.pendingResumeSec = resumeTime
+        self.volume = min(max(AppPreferences.shared.comfortGain, 0.25), 1.0)
         self.outputDeviceName = Self.queryDefaultAudioOutputName()
         loadCurrentEpisode()
     }
@@ -183,7 +187,8 @@ final class MacPlayerEngine: ObservableObject {
         }
         item.audioTimePitchAlgorithm = prefs.pitchAlgorithm == .spectral ? .spectral : .timeDomain
         item.preferredForwardBufferDuration = prefs.forwardBufferSeconds
-        player.volume = Float(min(max(prefs.comfortGain, 0.25), 1.0))
+        player.volume = Float(min(max(volume, 0.0), 1.0))
+        player.isMuted = isMuted
     }
 
     private func tryFailover(for ep: EpisodeItem, reason: String) {
@@ -233,6 +238,10 @@ final class MacPlayerEngine: ObservableObject {
                 guard sec.isFinite else { return }
                 self.currentTime = sec
                 if let dur = self.player.currentItem?.duration.seconds, dur.isFinite && dur > 0 { self.duration = dur }
+                if let range = self.player.currentItem?.loadedTimeRanges.first?.timeRangeValue {
+                    let end = CMTimeGetSeconds(range.start) + CMTimeGetSeconds(range.duration)
+                    if end.isFinite { self.bufferedDuration = end }
+                }
                 self.evaluateMarkers(at: sec)
                 if sec > 5 && abs(sec - self.lastSavedSec) >= 12, let ep = self.currentEpisode {
                     self.lastSavedSec = sec
@@ -299,6 +308,28 @@ final class MacPlayerEngine: ObservableObject {
         else { player.play(); player.rate = playbackRate; isPlaying = true }
     }
 
+    func toggleMute() {
+        isMuted.toggle()
+        player.isMuted = isMuted
+        showToast(isMuted ? "Đã tắt tiếng" : "Đã bật tiếng")
+    }
+
+    func setVolume(_ value: Double) {
+        let clamped = min(max(value, 0.0), 1.0)
+        volume = clamped
+        player.volume = Float(clamped)
+        if clamped > 0 && isMuted {
+            isMuted = false
+            player.isMuted = false
+        }
+    }
+
+    func seekRelative(_ delta: Double) {
+        seek(to: currentTime + delta)
+        let label = delta >= 0 ? "+\(Int(delta))s" : "\(Int(delta))s"
+        showToast(label)
+    }
+
     func seek(to seconds: Double) {
         let clamped = max(0, min(seconds, duration > 0 ? duration : seconds))
         player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
@@ -308,6 +339,17 @@ final class MacPlayerEngine: ObservableObject {
     func setRate(_ rate: Float) {
         playbackRate = rate
         if isPlaying { player.rate = rate }
+    }
+
+    func selectEpisode(serverIndex: Int, episodeIndex: Int) {
+        guard servers.indices.contains(serverIndex),
+              servers[serverIndex].server_data.indices.contains(episodeIndex) else { return }
+        self.serverIndex = serverIndex
+        self.episodeIndex = episodeIndex
+        self.pendingResumeSec = AppState.shared.history.first(where: {
+            $0.slug == movie.slug && $0.episodeIndex == episodeIndex
+        })?.currentTime ?? 0
+        loadCurrentEpisode()
     }
 
     func previousEpisode() {
