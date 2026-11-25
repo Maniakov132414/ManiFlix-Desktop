@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '1.1.0';
+  const APP_VERSION = '1.1.1';
 
   const THEME_PRESETS = [
     { id: 'apple-dark', name: 'Apple Music Tối', mode: 'dark', accent: '#FA2D48', bg: '#121214', surface: '#1C1C1E' },
@@ -291,9 +291,8 @@
     }
   }
 
-  function setAmbientUrl(imgUrl) {
-    const el = document.getElementById('ambientBackdrop');
-    if (el && imgUrl) el.style.backgroundImage = `url("${imgUrl}")`;
+  function setAmbientUrl() {
+    // Ambient backdrop uses lightweight GPU radial gradients (zero blur-image decode)
   }
 
   function isBlocked(slug) {
@@ -404,27 +403,44 @@
     }
   }
 
+  function appendCardsToGrid(gridId, btnId, incoming, hasMore) {
+    const grid = document.getElementById(gridId);
+    const visNew = (incoming || []).filter(m => !isBlocked(m.slug));
+    if (grid && visNew.length) {
+      grid.insertAdjacentHTML('beforeend', visNew.map(movieCardHtml).join(''));
+    }
+    const btn = document.getElementById(btnId);
+    if (btn) {
+      if (!hasMore) {
+        const wrap = btn.closest('.load-more-wrap');
+        if (wrap) wrap.remove(); else btn.remove();
+      } else {
+        btn.disabled = false;
+        btn.textContent = 'Tải thêm phim';
+      }
+    }
+  }
+
   async function loadMoreDiscover() {
     if (state.discoverLoadingMore || !state.discoverHasMore) return;
     state.discoverLoadingMore = true;
-    const mc = document.getElementById('mainContent');
-    const prevScroll = mc ? mc.scrollTop : 0;
-    render();
-    if (mc) mc.scrollTop = prevScroll;
+    const btn = document.getElementById('btnLoadMoreDiscover');
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang tải...'; }
     try {
       const nextPage = state.discoverPage + 1;
       const data = await api(`/api/movies?page=${nextPage}`);
       const items = data.items || [];
+      const prevSlugs = new Set(state.heroMovies.map(m => m.slug));
+      const newItems = items.filter(m => m && m.slug && !prevSlugs.has(m.slug));
       state.discoverPage = nextPage;
       state.heroMovies = mergeUniqueMovies(state.heroMovies, items);
       state.discoverHasMore = items.length >= 10;
+      appendCardsToGrid('discoverGrid', 'btnLoadMoreDiscover', newItems, state.discoverHasMore);
     } catch {
       toast('Không tải thêm được phim');
+      if (btn) { btn.disabled = false; btn.textContent = 'Tải thêm phim'; }
     } finally {
       state.discoverLoadingMore = false;
-      const curScroll = mc ? mc.scrollTop : prevScroll;
-      render();
-      if (mc) mc.scrollTop = curScroll;
     }
   }
 
@@ -457,24 +473,23 @@
   async function loadMoreCategory() {
     if (state.categoryLoadingMore || !state.categoryHasMore || state.category === 'all') return;
     state.categoryLoadingMore = true;
-    const mc = document.getElementById('mainContent');
-    const prevScroll = mc ? mc.scrollTop : 0;
-    render();
-    if (mc) mc.scrollTop = prevScroll;
+    const btn = document.getElementById('btnLoadMoreCat');
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang tải...'; }
     try {
       const nextPage = state.categoryPage + 1;
       const data = await fetchCategoryPage(state.category, nextPage);
       const items = data.items || [];
+      const prevSlugs = new Set(state.filteredMovies.map(m => m.slug));
+      const newItems = items.filter(m => m && m.slug && !prevSlugs.has(m.slug));
       state.categoryPage = nextPage;
       state.filteredMovies = mergeUniqueMovies(state.filteredMovies, items);
       state.categoryHasMore = items.length >= 10;
+      appendCardsToGrid('categoryGrid', 'btnLoadMoreCat', newItems, state.categoryHasMore);
     } catch {
       toast('Không tải thêm được phim');
+      if (btn) { btn.disabled = false; btn.textContent = 'Tải thêm phim'; }
     } finally {
       state.categoryLoadingMore = false;
-      const curScroll = mc ? mc.scrollTop : prevScroll;
-      render();
-      if (mc) mc.scrollTop = curScroll;
     }
   }
 
@@ -510,7 +525,7 @@
     return `
       <div class="movie-card" data-slug="${esc(m.slug)}">
         <div class="poster-wrap">
-          <img loading="lazy" src="${esc(primary)}" data-fallback="${esc(secondary)}" alt="${esc(m.name)}" />
+          <img loading="lazy" decoding="async" src="${esc(primary)}" data-fallback="${esc(secondary)}" alt="${esc(m.name)}" />
           ${badge ? `<span class="poster-badge">${esc(badge)}</span>` : ''}
         </div>
         <div class="movie-name">${esc(m.name)}</div>
@@ -541,18 +556,18 @@
     const bgFb = resolveImg(hero.poster_url) || '';
     return `
       <div class="hero-card" id="heroCard">
-        <img class="hero-bg" src="${esc(bg)}" data-fallback="${esc(bgFb)}" alt="" />
+        <img class="hero-bg" id="heroBgImg" decoding="async" src="${esc(bg)}" data-fallback="${esc(bgFb)}" alt="" />
         <div class="hero-grad"></div>
         <button class="hero-nav hero-prev" id="btnHeroPrev" title="Phim trước">${svgIcon('chevLeft', 18)}</button>
         <button class="hero-nav hero-next" id="btnHeroNext" title="Phim tiếp">${svgIcon('chevRight', 18)}</button>
         <div class="hero-body">
-          <span class="hero-tag">PHIM MỚI / ${esc(hero.quality || 'HD')}</span>
-          <h2 class="hero-title">${esc(hero.name)}</h2>
-          <div class="hero-sub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
+          <span class="hero-tag" id="heroTag">PHIM MỚI / ${esc(hero.quality || 'HD')}</span>
+          <h2 class="hero-title" id="heroTitle">${esc(hero.name)}</h2>
+          <div class="hero-sub" id="heroSub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
           <div class="hero-actions">
-            <button class="btn-accent" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
-            <button class="btn-glass" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>Chi tiết</span></button>
-            <button class="btn-glass" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
+            <button class="btn-accent" id="btnHeroPlay" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
+            <button class="btn-glass" id="btnHeroDetail" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>Chi tiết</span></button>
+            <button class="btn-glass" id="btnHeroFav" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
           </div>
         </div>
       </div>
@@ -561,22 +576,39 @@
       </div>`;
   }
 
-  function updateHeroDomInPlace() {
+  function updateHeroInPlace() {
     const featured = getFeaturedHeroList();
     if (!featured.length) return;
     if (state.heroIdx >= featured.length) state.heroIdx = 0;
     const hero = featured[state.heroIdx];
-    const card = document.getElementById('heroCard');
+    const bgImg = document.getElementById('heroBgImg');
+    const tagEl = document.getElementById('heroTag');
+    const titleEl = document.getElementById('heroTitle');
+    const subEl = document.getElementById('heroSub');
+    const playBtn = document.getElementById('btnHeroPlay');
+    const detBtn = document.getElementById('btnHeroDetail');
+    const favBtn = document.getElementById('btnHeroFav');
     const dots = document.getElementById('heroDots');
-    if (!card || !dots) return;
-    const wrap = document.createElement('div');
-    wrap.innerHTML = heroBannerHtml(featured);
-    const nextCard = wrap.querySelector('#heroCard');
-    const nextDots = wrap.querySelector('#heroDots');
-    if (nextCard) card.replaceWith(nextCard);
-    if (nextDots) dots.replaceWith(nextDots);
-    if (hero) setAmbientUrl(resolveImg(hero.poster_url || hero.thumb_url));
-    bindHeroEvents();
+    if (!bgImg || !dots) return;
+
+    const bg = resolveImg(hero.thumb_url || hero.poster_url) || IMG_FALLBACK_SVG;
+    const bgFb = resolveImg(hero.poster_url) || '';
+    bgImg.setAttribute('data-fb-step', '0');
+    bgImg.setAttribute('data-fallback', bgFb);
+    if (bgImg.src !== bg) bgImg.src = bg;
+    if (tagEl) tagEl.textContent = `PHIM MỚI / ${hero.quality || 'HD'}`;
+    if (titleEl) titleEl.textContent = hero.name || '';
+    if (subEl) subEl.textContent = `${hero.origin_name || ''} ${hero.year ? '(' + hero.year + ')' : ''}`.trim();
+    if (playBtn) playBtn.dataset.heroPlay = hero.slug;
+    if (detBtn) detBtn.dataset.openSlug = hero.slug;
+    if (favBtn) {
+      favBtn.dataset.favSlug = hero.slug;
+      const fav = isFavorite(hero.slug);
+      favBtn.innerHTML = `${svgIcon(fav ? 'check' : 'plus', 14)}<span>${fav ? 'Đã lưu' : 'Tủ phim'}</span>`;
+    }
+    dots.querySelectorAll('.hero-dot').forEach((d, idx) => {
+      d.classList.toggle('active', idx === state.heroIdx);
+    });
   }
 
   function bindHeroEvents() {
@@ -588,21 +620,21 @@
     if (btnPrev && featured.length) {
       btnPrev.onclick = () => {
         state.heroIdx = (state.heroIdx - 1 + featured.length) % featured.length;
-        updateHeroDomInPlace();
+        updateHeroInPlace();
         resetHeroAutoTimer();
       };
     }
     if (btnNext && featured.length) {
       btnNext.onclick = () => {
         state.heroIdx = (state.heroIdx + 1) % featured.length;
-        updateHeroDomInPlace();
+        updateHeroInPlace();
         resetHeroAutoTimer();
       };
     }
     mc.querySelectorAll('[data-hero-idx]').forEach(el => {
       el.onclick = () => {
         state.heroIdx = parseInt(el.dataset.heroIdx, 10) || 0;
-        updateHeroDomInPlace();
+        updateHeroInPlace();
         resetHeroAutoTimer();
       };
     });
@@ -615,7 +647,8 @@
     mc.querySelectorAll('[data-fav-slug]').forEach(el => {
       el.onclick = async () => {
         if (!state.token) { openAuthModal(); return; }
-        const m = state.heroMovies.find(x => x.slug === el.dataset.favSlug);
+        const slug = el.dataset.favSlug;
+        const m = state.heroMovies.find(x => x.slug === slug);
         if (!m) return;
         try {
           const r = await api('/api/user/favorites/toggle', {
@@ -623,7 +656,8 @@
             json: { slug: m.slug, name: m.name, poster: m.poster_url || m.thumb_url || '', year: m.year || 0, quality: m.quality || 'HD', lang: m.lang || 'Vietsub' }
           });
           if (Array.isArray(r.favorites)) state.favorites = r.favorites;
-          updateHeroDomInPlace();
+          const fav = isFavorite(slug);
+          el.innerHTML = `${svgIcon(fav ? 'check' : 'plus', 14)}<span>${fav ? 'Đã lưu' : 'Tủ phim'}</span>`;
         } catch {}
       };
     });
@@ -636,7 +670,7 @@
       const featured = getFeaturedHeroList();
       if (featured.length <= 1) return;
       state.heroIdx = (state.heroIdx + 1) % featured.length;
-      updateHeroDomInPlace();
+      updateHeroInPlace();
     }, 7000);
   }
 
@@ -660,7 +694,7 @@
         const histCards = state.history.slice(0, 12).map(h => `
           <div class="movie-card" data-slug="${esc(h.slug)}">
             <div class="poster-wrap">
-              <img src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
+              <img loading="lazy" decoding="async" src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
               <span class="poster-badge">${esc(h.episodeName || 'Tập 1')}</span>
             </div>
             <div class="movie-name">${esc(h.name || h.slug)}</div>
@@ -680,7 +714,7 @@
         html += railSectionHtml(title, vis.map(movieCardHtml).join(''), id);
       }
 
-      html += `<div class="section-hdr"><h3 class="section-title">Mới cập nhật</h3></div><div class="movie-grid">${visibleHero.map(movieCardHtml).join('')}</div>`;
+      html += `<div class="section-hdr"><h3 class="section-title">Mới cập nhật</h3></div><div class="movie-grid" id="discoverGrid">${visibleHero.map(movieCardHtml).join('')}</div>`;
       if (state.discoverHasMore) {
         html += `<div class="load-more-wrap"><button class="btn-glass" id="btnLoadMoreDiscover" ${state.discoverLoadingMore ? 'disabled' : ''}>${state.discoverLoadingMore ? 'Đang tải...' : 'Tải thêm phim'}</button></div>`;
       }
@@ -689,7 +723,7 @@
       const list = state.filteredMovies.filter(m => !isBlocked(m.slug));
       html += `<div class="section-hdr"><h3 class="section-title">${esc(catLabel)}</h3></div>`;
       html += list.length
-        ? `<div class="movie-grid">${list.map(movieCardHtml).join('')}</div>`
+        ? `<div class="movie-grid" id="categoryGrid">${list.map(movieCardHtml).join('')}</div>`
         : `<div class="glass-box">Đang tải danh sách...</div>`;
       if (list.length && state.categoryHasMore) {
         html += `<div class="load-more-wrap"><button class="btn-glass" id="btnLoadMoreCat" ${state.categoryLoadingMore ? 'disabled' : ''}>${state.categoryLoadingMore ? 'Đang tải...' : 'Tải thêm phim'}</button></div>`;
@@ -774,7 +808,7 @@
 
     const leftCol = `
       <div>
-        <img class="detail-poster" src="${esc(poster)}" data-fallback="${esc(posterFb)}" alt="" />
+        <img class="detail-poster" decoding="async" src="${esc(poster)}" data-fallback="${esc(posterFb)}" alt="" />
         <h2 class="detail-title">${esc(m.name)}</h2>
         ${m.origin_name ? `<div class="detail-origin">${esc(m.origin_name)} ${m.year ? '/ ' + esc(m.year) : ''} ${m.lang ? '/ ' + esc(m.lang) : ''}</div>` : ''}
         <div class="detail-actions">
@@ -856,7 +890,7 @@
         ${topics.map(t => `<button class="chip" data-search-topic="${esc(t)}">${esc(t)}</button>`).join('')}
       </div>
       ${vis.length
-        ? `<div class="movie-grid">${vis.map(movieCardHtml).join('')}</div>
+        ? `<div class="movie-grid" id="searchGrid">${vis.map(movieCardHtml).join('')}</div>
            ${state.searchHasMore ? `<div class="load-more-wrap"><button class="btn-glass" id="btnLoadMoreSearch" ${state.searchLoadingMore ? 'disabled' : ''}>${state.searchLoadingMore ? 'Đang tải...' : 'Tải thêm phim'}</button></div>` : ''}`
         : `<div class="glass-box" style="text-align:center;color:var(--text-secondary)">${state.searchQuery ? 'Không có kết quả phù hợp.' : 'Nhập từ khoá hoặc chọn chủ đề bên trên.'}</div>`}
     `;
@@ -888,24 +922,23 @@
     const trimmed = state.searchQuery.trim();
     if (!trimmed || state.searchLoadingMore || !state.searchHasMore) return;
     state.searchLoadingMore = true;
-    const mc = document.getElementById('mainContent');
-    const prevScroll = mc ? mc.scrollTop : 0;
-    render();
-    if (mc) mc.scrollTop = prevScroll;
+    const btn = document.getElementById('btnLoadMoreSearch');
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang tải...'; }
     try {
       const nextPage = state.searchPage + 1;
       const r = await api(`/api/search?q=${encodeURIComponent(trimmed)}&page=${nextPage}`);
       const items = r.items || [];
+      const prevSlugs = new Set(state.searchResults.map(m => m.slug));
+      const newItems = items.filter(m => m && m.slug && !prevSlugs.has(m.slug));
       state.searchPage = nextPage;
       state.searchResults = mergeUniqueMovies(state.searchResults, items);
       state.searchHasMore = items.length >= 10;
+      appendCardsToGrid('searchGrid', 'btnLoadMoreSearch', newItems, state.searchHasMore);
     } catch {
       toast('Không tải thêm được kết quả');
+      if (btn) { btn.disabled = false; btn.textContent = 'Tải thêm phim'; }
     } finally {
       state.searchLoadingMore = false;
-      const curScroll = mc ? mc.scrollTop : prevScroll;
-      render();
-      if (mc) mc.scrollTop = curScroll;
     }
   }
 
@@ -923,7 +956,7 @@
         const pct = h.duration > 1 ? Math.min(100, Math.round((h.currentTime || 0) / h.duration * 100)) : 0;
         return `
           <div class="hist-row" data-slug="${esc(h.slug)}">
-            <img class="hist-thumb" src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
+            <img class="hist-thumb" loading="lazy" decoding="async" src="${esc(resolveImg(h.poster) || IMG_FALLBACK_SVG)}" alt="" />
             <div style="flex:1;min-width:0">
               <div class="movie-name">${esc(h.name || h.slug)}</div>
               <div class="movie-meta">${esc(h.episodeName || 'Tập 1')} (${pct}%)</div>
@@ -940,7 +973,7 @@
       if (!state.blocked.length) return html + `<div class="glass-box">Chưa có phim nào bị ẩn.</div>`;
       html += state.blocked.map(b => `
         <div class="hist-row">
-          <img class="hist-thumb" style="width:48px;height:68px" src="${esc(resolveImg(b.poster) || IMG_FALLBACK_SVG)}" alt="" />
+          <img class="hist-thumb" loading="lazy" decoding="async" style="width:48px;height:68px" src="${esc(resolveImg(b.poster) || IMG_FALLBACK_SVG)}" alt="" />
           <div style="flex:1;min-width:0">
             <div class="movie-name">${esc(b.name)}</div>
             <div class="movie-meta">Đang ẩn khỏi Trang chủ & Tìm kiếm</div>
@@ -2164,12 +2197,6 @@
 
   function bindDynamicEvents() {
     const mc = document.getElementById('mainContent');
-    mc.querySelectorAll('[data-slug]').forEach(el => {
-      el.onclick = (e) => {
-        if (e.target.closest('[data-del-hist]') || e.target.closest('[data-unblock]')) return;
-        openDetail(el.dataset.slug);
-      };
-    });
     bindHeroEvents();
 
     mc.querySelectorAll('[data-cat]').forEach(el => {
@@ -2237,12 +2264,14 @@
     if (dFav) dFav.onclick = async () => {
       if (!state.token) { openAuthModal(); return; }
       const m = state.detailData.movie;
-      const r = await api('/api/user/favorites/toggle', {
-        method: 'POST',
-        json: { slug: m.slug, name: m.name, poster: m.poster_url || m.thumb_url || '', year: m.year || 0, quality: m.quality || 'HD', lang: m.lang || 'Vietsub' }
-      });
-      if (Array.isArray(r.favorites)) state.favorites = r.favorites;
-      render();
+      try {
+        const r = await api('/api/user/favorites/toggle', {
+          method: 'POST',
+          json: { slug: m.slug, name: m.name, poster: m.poster_url || m.thumb_url || '', year: m.year || 0, quality: m.quality || 'HD', lang: m.lang || 'Vietsub' }
+        });
+        if (Array.isArray(r.favorites)) state.favorites = r.favorites;
+        dFav.innerHTML = `${svgIcon('bookmark', 14)}<span>${isFavorite(m.slug) ? 'Đã lưu' : 'Lưu'}</span>`;
+      } catch {}
     };
     const dBlock = document.getElementById('btnDetailBlock');
     if (dBlock) dBlock.onclick = () => {
@@ -2479,11 +2508,40 @@
   document.getElementById('btnAccount').onclick = openAuthModal;
   document.getElementById('sidebarUserCard').onclick = openAuthModal;
 
+  const mainContentEl = document.getElementById('mainContent');
+  if (mainContentEl) {
+    mainContentEl.addEventListener('click', (e) => {
+      if (e.target.closest('[data-del-hist]') || e.target.closest('[data-unblock]')) return;
+      const card = e.target.closest('[data-slug]');
+      if (card && card.dataset.slug) {
+        openDetail(card.dataset.slug);
+      }
+    });
+
+    let scrollRaf = 0;
+    mainContentEl.addEventListener('scroll', () => {
+      if (scrollRaf) return;
+      scrollRaf = requestAnimationFrame(() => {
+        scrollRaf = 0;
+        const amb = document.getElementById('ambientBackdrop');
+        if (amb && state.prefs.ambient) {
+          const op = Math.max(0.35, 0.9 - mainContentEl.scrollTop / 600);
+          amb.style.opacity = op.toFixed(2);
+        }
+      });
+    }, { passive: true });
+  }
+
+  let resizeRaf = 0;
   window.addEventListener('resize', () => {
-    const was = isDesktopLayout();
-    syncDesktopChrome();
-    if (was !== isDesktopLayout()) render();
-  });
+    if (resizeRaf) return;
+    resizeRaf = requestAnimationFrame(() => {
+      resizeRaf = 0;
+      const was = isDesktopLayout();
+      syncDesktopChrome();
+      if (was !== isDesktopLayout()) render();
+    });
+  }, { passive: true });
 
   applyTheme();
   syncDesktopChrome();

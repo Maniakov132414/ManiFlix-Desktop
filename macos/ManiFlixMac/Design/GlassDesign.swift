@@ -1,5 +1,6 @@
 import SwiftUI
 import AppKit
+import ImageIO
 
 extension Color {
     init(hex: String) {
@@ -82,7 +83,9 @@ enum GlassUIStyle: String, CaseIterable, Identifiable {
         switch self {
         case .legacy: return false
         case .adaptive, .liquid:
+            #if compiler(>=6.2)
             if #available(macOS 26.0, *) { return true }
+            #endif
             return false
         }
     }
@@ -267,18 +270,28 @@ struct AmbientArtworkBackground: View {
         if prefs.ambientArtworkEnabled, let artworkURL = url {
             let light = ManiFlixTheme.isLight(colorScheme)
             let bg = ManiFlixTheme.background(scheme: colorScheme)
+            let accent = prefs.currentAccentColor
             ZStack(alignment: .top) {
-                CachedAsyncImage(url: artworkURL)
+                CachedAsyncImage(url: artworkURL, maxPixelSize: 64)
                     .frame(maxWidth: .infinity)
                     .frame(height: height)
-                    .blur(radius: 62)
-                    .saturation(light ? 1.12 : 1.28)
-                    .opacity(light ? 0.24 : 0.40)
+                    .blur(radius: 18)
+                    .saturation(light ? 1.12 : 1.25)
+                    .opacity(light ? 0.22 : 0.36)
+                    .drawingGroup()
+                    .overlay(
+                        RadialGradient(
+                            colors: [accent.opacity(light ? 0.10 : 0.16), .clear],
+                            center: .top,
+                            startRadius: 20,
+                            endRadius: height * 0.85
+                        )
+                    )
                     .overlay(
                         LinearGradient(
                             stops: [
                                 .init(color: bg.opacity(light ? 0.28 : 0.0), location: 0.0),
-                                .init(color: bg.opacity(light ? 0.65 : 0.42), location: 0.58),
+                                .init(color: bg.opacity(light ? 0.65 : 0.45), location: 0.58),
                                 .init(color: bg, location: 1.0)
                             ],
                             startPoint: .top,
@@ -337,20 +350,63 @@ struct WrappingFlowLayout: Layout {
     }
 }
 
-final class ImageCacheStore {
+final class ImageCacheStore: @unchecked Sendable {
     static let shared = ImageCacheStore()
     private let cache = NSCache<NSString, NSImage>()
+    let session: URLSession
+
     private init() {
-        cache.countLimit = 280
-        cache.totalCostLimit = 128 * 1024 * 1024
+        cache.countLimit = 240
+        cache.totalCostLimit = 96 * 1024 * 1024
+
+        let urlCache = URLCache(
+            memoryCapacity: 16 * 1024 * 1024,
+            diskCapacity: 64 * 1024 * 1024,
+            diskPath: "ManiFlixImageCache"
+        )
+        let cfg = URLSessionConfiguration.default
+        cfg.urlCache = urlCache
+        cfg.requestCachePolicy = .returnCacheDataElseLoad
+        cfg.httpMaximumConnectionsPerHost = 8
+        cfg.timeoutIntervalForRequest = 15
+        self.session = URLSession(configuration: cfg)
     }
-    func image(for url: URL) -> NSImage? { cache.object(forKey: url.absoluteString as NSString) }
-    func store(_ image: NSImage, for url: URL) { cache.setObject(image, forKey: url.absoluteString as NSString) }
+
+    private func cacheKey(url: URL, maxPixelSize: Int) -> NSString {
+        "\(url.absoluteString)#\(maxPixelSize)" as NSString
+    }
+
+    func image(for url: URL, maxPixelSize: Int) -> NSImage? {
+        cache.object(forKey: cacheKey(url: url, maxPixelSize: maxPixelSize))
+    }
+
+    func store(_ image: NSImage, for url: URL, maxPixelSize: Int) {
+        let cost = Int(image.size.width * image.size.height * 4)
+        cache.setObject(image, forKey: cacheKey(url: url, maxPixelSize: maxPixelSize), cost: max(1, cost))
+    }
+
+    nonisolated static func downsample(data: Data, maxPixelSize: Int) -> NSImage? {
+        let srcOptions: [CFString: Any] = [kCGImageSourceShouldCache: false]
+        guard let source = CGImageSourceCreateWithData(data as CFData, srcOptions as CFDictionary) else {
+            return nil
+        }
+        let thumbOptions: [CFString: Any] = [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: maxPixelSize
+        ]
+        guard let cgImage = CGImageSourceCreateThumbnailAtIndex(source, 0, thumbOptions as CFDictionary) else {
+            return nil
+        }
+        return NSImage(cgImage: cgImage, size: NSSize(width: cgImage.width, height: cgImage.height))
+    }
 }
 
 struct CachedAsyncImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
+    var maxPixelSize: Int = 380
     @Environment(\.colorScheme) private var colorScheme
     @State private var loadedImage: NSImage?
     @State private var failed = false
@@ -391,26 +447,33 @@ struct CachedAsyncImage: View {
     private func load() async {
         failed = false
         guard let url = url else { failed = true; return }
-        if let cached = ImageCacheStore.shared.image(for: url) {
+        let targetPixels = maxPixelSize
+        if let cached = ImageCacheStore.shared.image(for: url, maxPixelSize: targetPixels) {
             loadedImage = cached
             return
         }
         do {
             var request = URLRequest(url: url)
+            request.cachePolicy = .returnCacheDataElseLoad
             request.timeoutInterval = 15
-            request.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
-            let (data, response) = try await URLSession.shared.data(for: request)
+            request.setValue("ManiFlix-macOS/1.1", forHTTPHeaderField: "User-Agent")
+            let (data, response) = try await ImageCacheStore.shared.session.data(for: request)
+            guard !Task.isCancelled else { return }
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
                 failed = true; return
             }
-            if let img = NSImage(data: data) {
-                ImageCacheStore.shared.store(img, for: url)
-                await MainActor.run { loadedImage = img }
+            let decoded: NSImage? = await Task.detached(priority: .utility) {
+                ImageCacheStore.downsample(data: data, maxPixelSize: targetPixels)
+            }.value
+            guard !Task.isCancelled else { return }
+            if let img = decoded {
+                ImageCacheStore.shared.store(img, for: url, maxPixelSize: targetPixels)
+                loadedImage = img
             } else {
                 failed = true
             }
         } catch {
-            failed = true
+            if !Task.isCancelled { failed = true }
         }
     }
 }

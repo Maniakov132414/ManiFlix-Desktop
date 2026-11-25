@@ -12,6 +12,8 @@ use tao::event_loop::{ControlFlow, EventLoopBuilder};
 use tao::window::{Fullscreen, Window, WindowBuilder};
 use wry::http::{header, Method, Request, Response, StatusCode};
 use wry::WebViewBuilder;
+#[cfg(windows)]
+use wry::WebViewBuilderExtWindows;
 
 use crate::proxy::{json_response, proxy_api_request};
 use crate::telemetry::{collect_hardware_sysinfo, WindowTelemetry};
@@ -215,7 +217,7 @@ fn main() {
     let shared_win_proto = Arc::clone(&shared_win);
     let proxy_proto = proxy.clone();
 
-    let webview = WebViewBuilder::new()
+    let builder = WebViewBuilder::new()
         .with_asynchronous_custom_protocol("maniflix".into(), move |_webview_id, request, responder| {
             let shared_win_req = Arc::clone(&shared_win_proto);
             let proxy_req = proxy_proto.clone();
@@ -225,7 +227,14 @@ fn main() {
             });
         })
         .with_url("http://maniflix.localhost/")
-        .with_devtools(cfg!(debug_assertions))
+        .with_devtools(cfg!(debug_assertions));
+
+    #[cfg(windows)]
+    let builder = builder.with_additional_browser_args(
+        "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --enable-gpu-rasterization --enable-zero-copy",
+    );
+
+    let webview = builder
         .build(&window)
         .expect("Failed to create WebView2");
 

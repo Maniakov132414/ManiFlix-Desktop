@@ -38,15 +38,14 @@ struct MoviePosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottomLeading) {
-                CachedAsyncImage(url: movie.displayPosterURL)
+                CachedAsyncImage(url: movie.displayPosterURL, maxPixelSize: 380)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(2.0 / 3.0, contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                     .overlay(
                         RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.5)
+                            .strokeBorder(ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.7)
                     )
-                    .shadow(color: Color.black.opacity(ManiFlixTheme.isLight(colorScheme) ? 0.12 : 0.28), radius: 8, x: 0, y: 4)
 
                 if let badge = movie.quality ?? movie.episode_current, !badge.isEmpty {
                     Text(badge)
@@ -234,7 +233,7 @@ struct DiscoverView: View {
     private func heroCard(for movie: MovieItem) -> some View {
         let h: CGFloat = isCompactPhone ? 280 : 340
         return ZStack(alignment: .bottomLeading) {
-            CachedAsyncImage(url: movie.displayThumbURL ?? movie.displayPosterURL)
+            CachedAsyncImage(url: movie.displayThumbURL ?? movie.displayPosterURL, maxPixelSize: 1080)
                 .frame(maxWidth: .infinity).frame(height: h)
                 .overlay(
                     LinearGradient(

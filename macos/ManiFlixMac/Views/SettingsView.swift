@@ -75,7 +75,7 @@ struct SettingsView: View {
                 HStack {
                     Text("Phiên bản")
                     Spacer()
-                    Text("1.1.0 (3)").font(.caption).foregroundColor(.secondary)
+                    Text("1.1.1 (4)").font(.caption).foregroundColor(.secondary)
                 }
                 Button("Đặt lại mặc định", role: .destructive) { prefs.resetToDefaults() }
             }
