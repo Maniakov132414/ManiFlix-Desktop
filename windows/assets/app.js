@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '1.2.1';
+  const APP_VERSION = '2.0.0';
 
   const THEME_PRESETS = [
     { id: 'crimson_violet', name: 'ManiFlix Mặc Định', mode: 'dark', accent: '#e11d48', bg: '#0b0f19', surface: '#0f172a' },
@@ -1842,7 +1842,7 @@
       };
 
       if (window.Hls && window.Hls.isSupported()) {
-        hls = new window.Hls({ enableWorker: true, subtitleDisplay: true });
+        hls = new window.Hls({ enableWorker: true, startFragPrefetch: true, subtitleDisplay: true });
         hls.loadSource(srcUrl);
         hls.attachMedia(video);
         hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
