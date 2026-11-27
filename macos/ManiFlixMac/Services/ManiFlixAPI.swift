@@ -51,9 +51,10 @@ final class ManiFlixAPI {
 
     func cleanM3U8URL(from rawM3U8: String, extraParams: [String: String] = [:]) -> URL? {
         guard var comps = URLComponents(string: "\(baseURL)/api/clean-m3u8") else { return nil }
+        let defSub = UserDefaults.standard.string(forKey: "pref.defaultSubtitleLang") ?? "vi"
         var items = [
             URLQueryItem(name: "url", value: rawM3U8),
-            URLQueryItem(name: "sub", value: AppPreferences.shared.defaultSubtitleLang)
+            URLQueryItem(name: "sub", value: defSub)
         ]
         for (k, v) in extraParams {
             items.append(URLQueryItem(name: k, value: v))
