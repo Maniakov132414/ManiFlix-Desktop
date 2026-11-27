@@ -91,6 +91,7 @@ struct MovieItem: Codable, Identifiable, Hashable {
     let type: String?
     let quality: String?
     let lang: String?
+    let sub_langs: [String]?
     let episode_current: String?
     let time: String?
     let category: [MovieTag]?
@@ -123,6 +124,7 @@ struct MovieDetail: Codable, Hashable {
     let episode_total: FlexibleString?
     let quality: String?
     let lang: String?
+    let sub_langs: [String]?
     let year: FlexibleInt?
     let actor: [String]?
     let director: [String]?

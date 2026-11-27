@@ -1,12 +1,13 @@
 (() => {
-  const APP_VERSION = '1.1.1';
+  const APP_VERSION = '1.2.0';
 
   const THEME_PRESETS = [
-    { id: 'apple-dark', name: 'Apple Music Tối', mode: 'dark', accent: '#FA2D48', bg: '#121214', surface: '#1C1C1E' },
-    { id: 'pure-light', name: 'Trắng Tinh Khôi', mode: 'light', accent: '#FA2D48', bg: '#F4F4F7', surface: '#FFFFFF' },
-    { id: 'midnight-indigo', name: 'Midnight Indigo', mode: 'custom', accent: '#5E5CE6', bg: '#0B1020', surface: '#151C32' },
-    { id: 'forest-emerald', name: 'Forest Emerald', mode: 'custom', accent: '#30D158', bg: '#0B1612', surface: '#14241D' },
-    { id: 'cyberpunk-rose', name: 'Cyberpunk Rose', mode: 'custom', accent: '#FF2D55', bg: '#16091A', surface: '#26112E' }
+    { id: 'crimson_violet', name: 'ManiFlix Mặc Định', mode: 'dark', accent: '#e11d48', bg: '#0b0f19', surface: '#0f172a' },
+    { id: 'netflix_oled', name: 'Rạp Đen OLED', mode: 'oled', accent: '#e50914', bg: '#050507', surface: '#0d0d12' },
+    { id: 'midnight_indigo', name: 'Đêm Xanh Indigo', mode: 'custom', accent: '#5e5ce6', bg: '#0b1020', surface: '#151c32' },
+    { id: 'emerald_aurora', name: 'Lục Bảo Cực Quang', mode: 'custom', accent: '#10b981', bg: '#06120f', surface: '#0b1d19' },
+    { id: 'cyber_rose', name: 'Cyberpunk Rose', mode: 'custom', accent: '#ff2d55', bg: '#140818', surface: '#221029' },
+    { id: 'pure_light', name: 'Trắng Tinh Khôi', mode: 'light', accent: '#e11d48', bg: '#f4f5f8', surface: '#ffffff' }
   ];
 
   const ACCENT_PRESETS = [
@@ -118,7 +119,10 @@
       phoneCols: 3,
       autoCutAds: true,
       introSkip: 'button',
-      autoNext: true
+      autoNext: true,
+      uiLang: 'vi',
+      defaultSubLang: 'vi',
+      langOnboarded: false
     }, safeJsonParse(localStorage.getItem('mf.prefs') || '{}', {})),
     desktop: { width: 1180, height: 760, fullscreen: false, maximized: false, layoutMode: 'desktop', monitorName: 'Primary', refreshRateHz: 60 },
     monitor: {
@@ -517,6 +521,75 @@
     }
   }
 
+  function tr(vi, en) {
+    return state.prefs.uiLang === 'en' ? en : vi;
+  }
+
+  function formatSubBadge(m) {
+    const subs = Array.isArray(m && m.sub_langs) ? m.sub_langs : [];
+    const ui = state.prefs.uiLang === 'en' ? 'en' : 'vi';
+    const rawLang = String((m && m.lang) || 'Vietsub').trim();
+    if (subs.length >= 2) {
+      const viMap = { vi: 'Vietsub', en: 'Engsub', zh: 'Sub Trung', ja: 'Sub Nhật', ko: 'Sub Hàn', th: 'Sub Thái' };
+      const enMap = { vi: 'VI Sub', en: 'EN Sub', zh: 'ZH Sub', ja: 'JA Sub', ko: 'KO Sub', th: 'TH Sub' };
+      const map = ui === 'en' ? enMap : viMap;
+      const ordered = [...subs].sort((a, b) => ((a === 'vi' ? 0 : (a === 'en' ? 1 : 2)) - (b === 'vi' ? 0 : (b === 'en' ? 1 : 2))));
+      const top = ordered.slice(0, 2).map(c => map[c] || c.toUpperCase());
+      const extra = ordered.length > 2 ? ` +${ordered.length - 2}` : '';
+      return top.join(' + ') + extra;
+    }
+    if (ui === 'en') {
+      return rawLang.replace(/Vietsub/gi, 'VI Sub').replace(/Engsub/gi, 'EN Sub').replace(/Thuyết Minh/gi, 'Voiceover').replace(/Lồng Tiếng/gi, 'Dubbed');
+    }
+    return rawLang || 'Vietsub';
+  }
+
+  function openDesktopLanguageModal(isOnboarding) {
+    const root = document.getElementById('modalRoot');
+    if (!root) return;
+    const selUi = state.prefs.uiLang === 'en' ? 'en' : 'vi';
+    root.innerHTML = `
+      <div class="modal-backdrop" id="langModalBackdrop">
+        <div class="modal-card" style="max-width:460px">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+            <strong style="font-size:18px">${isOnboarding ? 'Chọn ngôn ngữ / Choose Language' : tr('Ngôn ngữ & Phụ đề', 'Language & Subtitles')}</strong>
+            ${isOnboarding ? '' : `<button class="p-btn p-btn-icon" id="btnCloseLangModal">${svgIcon('close', 14)}</button>`}
+          </div>
+          <div style="font-size:12.5px;color:var(--text-secondary);margin-bottom:14px">
+            ${isOnboarding ? 'Chọn ngôn ngữ hiển thị và phụ đề mặc định khi mở phim:' : tr('Chọn ngôn ngữ ứng dụng và phụ đề mặc định:', 'Choose app language and default subtitle:')}
+          </div>
+          <div style="display:flex;flex-direction:column;gap:8px">
+            <button class="s-row clickable" id="btnPickLangVi" style="border-radius:12px;border:1.5px solid ${selUi === 'vi' ? 'var(--accent)' : 'var(--card-stroke)'};background:var(--card-fill);padding:14px">
+              <div style="text-align:left">
+                <div style="font-weight:700;font-size:14px">Tiếng Việt</div>
+                <div class="s-sub">Giao diện Tiếng Việt • Phụ đề mặc định: Tiếng Việt</div>
+              </div>
+              <span style="font-weight:800;color:var(--accent)">VI</span>
+            </button>
+            <button class="s-row clickable" id="btnPickLangEn" style="border-radius:12px;border:1.5px solid ${selUi === 'en' ? 'var(--accent)' : 'var(--card-stroke)'};background:var(--card-fill);padding:14px">
+              <div style="text-align:left">
+                <div style="font-weight:700;font-size:14px">English</div>
+                <div class="s-sub">English UI • Default Subtitle: English</div>
+              </div>
+              <span style="font-weight:800;color:var(--accent)">EN</span>
+            </button>
+          </div>
+        </div>
+      </div>`;
+    const choose = (lang) => {
+      state.prefs.uiLang = lang;
+      state.prefs.defaultSubLang = lang;
+      state.prefs.langOnboarded = true;
+      savePrefs();
+      root.innerHTML = '';
+      render();
+    };
+    document.getElementById('btnPickLangVi').onclick = () => choose('vi');
+    document.getElementById('btnPickLangEn').onclick = () => choose('en');
+    const cl = document.getElementById('btnCloseLangModal');
+    if (cl) cl.onclick = () => { root.innerHTML = ''; };
+  }
+
   function movieCardHtml(m) {
     const primary = resolveImg(m.poster_url || m.thumb_url) || IMG_FALLBACK_SVG;
     const secondary = resolveImg(m.thumb_url || m.poster_url) || '';
@@ -561,7 +634,7 @@
         <button class="hero-nav hero-prev" id="btnHeroPrev" title="Phim trước">${svgIcon('chevLeft', 18)}</button>
         <button class="hero-nav hero-next" id="btnHeroNext" title="Phim tiếp">${svgIcon('chevRight', 18)}</button>
         <div class="hero-body">
-          <span class="hero-tag" id="heroTag">PHIM MỚI / ${esc(hero.quality || 'HD')}</span>
+          <span class="hero-tag" id="heroTag">${tr('PHIM MỚI', 'NEW')} / ${esc(hero.quality || 'HD')} / ${esc(formatSubBadge(hero))}</span>
           <h2 class="hero-title" id="heroTitle">${esc(hero.name)}</h2>
           <div class="hero-sub" id="heroSub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
           <div class="hero-actions">
@@ -1005,7 +1078,28 @@
         </div>
 
         <div class="settings-section">
-          <div class="settings-label">Tuỳ biến & Chẩn đoán</div>
+          <div class="settings-label">${tr('Ngôn ngữ & Phụ đề', 'Language & Subtitles')}</div>
+          <div class="settings-card">
+            <div class="s-row">
+              <span>${tr('Ngôn ngữ ứng dụng', 'App Language')}</span>
+              <select id="selUiLang">
+                <option value="vi" ${state.prefs.uiLang !== 'en' ? 'selected' : ''}>Tiếng Việt</option>
+                <option value="en" ${state.prefs.uiLang === 'en' ? 'selected' : ''}>English</option>
+              </select>
+            </div>
+            <div class="s-row">
+              <span>${tr('Phụ đề mặc định', 'Default Subtitle')}</span>
+              <select id="selDefaultSub">
+                <option value="vi" ${(state.prefs.defaultSubLang || 'vi') === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
+                <option value="en" ${state.prefs.defaultSubLang === 'en' ? 'selected' : ''}>English</option>
+                <option value="off" ${state.prefs.defaultSubLang === 'off' ? 'selected' : ''}>${tr('Tắt phụ đề', 'Off')}</option>
+              </select>
+            </div>
+          </div>
+        </div>
+
+        <div class="settings-section">
+          <div class="settings-label">${tr('Tuỳ biến & Chẩn đoán', 'Appearance & Diagnostics')}</div>
           <div class="settings-card">
             <div class="s-row clickable" data-subpage="theme">
               <div>
@@ -1518,6 +1612,9 @@
             </div>
 
             <div class="player-ctrl-group">
+              <select class="p-select" id="selPlayerSub" title="Phụ đề">
+                <option value="-1">Sub: Auto</option>
+              </select>
               <select class="p-select" id="selPlayerQuality" title="Chất lượng HLS">
                 <option value="-1" selected>Auto</option>
               </select>
@@ -1745,7 +1842,7 @@
       };
 
       if (window.Hls && window.Hls.isSupported()) {
-        hls = new window.Hls({ enableWorker: true });
+        hls = new window.Hls({ enableWorker: true, subtitleDisplay: true });
         hls.loadSource(srcUrl);
         hls.attachMedia(video);
         hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
@@ -1754,10 +1851,35 @@
           video.play().catch(() => {});
           tryResume();
         });
+        hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+          const selSub = document.getElementById('selPlayerSub');
+          const tracks = hls.subtitleTracks || [];
+          const defSub = (state.prefs.defaultSubLang || 'vi').toLowerCase();
+          if (defSub === 'off') {
+            hls.subtitleTrack = -1;
+          } else {
+            const re = defSub === 'en' ? /\b(en|eng|english)\b/i : /vi|vie|viet/i;
+            let idx = tracks.findIndex(t => re.test((t.lang || '') + ' ' + (t.name || '')));
+            if (idx < 0) idx = tracks.findIndex(t => /vi|vie|viet/i.test((t.lang || '') + ' ' + (t.name || '')));
+            if (idx >= 0) hls.subtitleTrack = idx;
+          }
+          if (selSub) {
+            const opts = ['<option value="-1">Sub: Off</option>'];
+            tracks.forEach((t, i) => {
+              opts.push(`<option value="${i}" ${i === hls.subtitleTrack ? 'selected' : ''}>${esc(t.name || t.lang || 'Sub ' + (i + 1))}</option>`);
+            });
+            selSub.innerHTML = opts.join('');
+            selSub.value = String(hls.subtitleTrack);
+          }
+        });
         hls.on(window.Hls.Events.ERROR, (_, data) => {
-          if (data.fatal && srcUrl !== rawUrl) {
-            curSrcIsClean = false;
-            attachStream(rawUrl, 'Dự phòng (gốc)', rawUrl, resumeSec);
+          if (data.fatal) {
+            const isVs = rawUrl.includes('#vsmov.m3u8');
+            const fbUrl = isVs ? (`/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(state.prefs.defaultSubLang || 'vi')}&ap=1`) : rawUrl;
+            if (srcUrl !== fbUrl) {
+              curSrcIsClean = isVs;
+              attachStream(fbUrl, isVs ? 'Dự phòng (proxy)' : 'Dự phòng (gốc)', rawUrl, resumeSec);
+            }
           }
         });
       } else {
@@ -1821,7 +1943,7 @@
       }
 
       const rawUrl = ep.link_m3u8.trim();
-      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}`;
+      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(state.prefs.defaultSubLang || 'vi')}`;
       attachStream(cleanUrl, 'Chuẩn (clean-m3u8)', rawUrl, resumeSec);
 
       const epDigits = (ep.slug || String(episodeIndex + 1)).replace(/\D+/g, '') || '1';
@@ -1932,6 +2054,14 @@
       showFlash('vol2', `Âm lượng ${Math.round(val * 100)}%`);
       wakeHud();
     };
+    const selSubEl = document.getElementById('selPlayerSub');
+    if (selSubEl) selSubEl.onchange = () => {
+      if (!hls) return;
+      const val = parseInt(selSubEl.value, 10);
+      hls.subtitleTrack = val;
+      hls.subtitleDisplay = val >= 0;
+      wakeHud();
+    };
     selQuality.onchange = () => {
       if (!hls) return;
       hls.currentLevel = parseInt(selQuality.value, 10);
@@ -1966,10 +2096,12 @@
       const ep = currentEp();
       if (!ep) return;
       const rawUrl = ep.link_m3u8.trim();
-      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}`;
+      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(state.prefs.defaultSubLang || 'vi')}`;
+      const isVs = rawUrl.includes('#vsmov.m3u8');
+      const fbUrl = isVs ? (cleanUrl + '&ap=1') : rawUrl;
       const curPos = video.currentTime || 0;
       curSrcIsClean = !curSrcIsClean;
-      attachStream(curSrcIsClean ? cleanUrl : rawUrl, curSrcIsClean ? 'Chuẩn (clean-m3u8)' : 'Dự phòng (gốc)', rawUrl, curPos);
+      attachStream(curSrcIsClean ? cleanUrl : fbUrl, curSrcIsClean ? 'Chuẩn (clean-m3u8)' : (isVs ? 'Dự phòng (proxy)' : 'Dự phòng (gốc)'), rawUrl, curPos);
       wakeHud();
     };
 
@@ -2337,6 +2469,10 @@
       const el = document.getElementById(id);
       if (el) el.onchange = () => { state.prefs[key] = el.checked; savePrefs(); if (onChange) onChange(); };
     };
+    const selUiLang = document.getElementById('selUiLang');
+    if (selUiLang) selUiLang.onchange = () => { state.prefs.uiLang = selUiLang.value; savePrefs(); render(); };
+    const selDefSub = document.getElementById('selDefaultSub');
+    if (selDefSub) selDefSub.onchange = () => { state.prefs.defaultSubLang = selDefSub.value; savePrefs(); };
     bindChk('chkAutoAds', 'autoCutAds');
     bindChk('chkAutoNext', 'autoNext');
     bindChk('chkAmbient', 'ambient', () => render());
@@ -2548,4 +2684,7 @@
   bootstrapAuth();
   loadDiscover();
   resetHeroAutoTimer();
+  if (!state.prefs.langOnboarded) {
+    setTimeout(() => openDesktopLanguageModal(true), 200);
+  }
 })();

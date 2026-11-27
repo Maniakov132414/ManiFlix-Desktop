@@ -151,8 +151,11 @@ final class MacPlayerEngine: ObservableObject {
         guard !raw.isEmpty else {
             isFailed = true; isBuffering = false; errorMessage = "Tập này chưa có luồng HLS."; return
         }
-        let resolved = (useClean ? ManiFlixAPI.shared.cleanM3U8URL(from: raw) : nil) ?? URL(string: raw)
-        currentSourceLabel = useClean ? "Chuẩn" : "Dự phòng"
+        let isVsmov = raw.contains("#vsmov.m3u8")
+        let resolved: URL? = useClean
+            ? ManiFlixAPI.shared.cleanM3U8URL(from: raw)
+            : (isVsmov ? ManiFlixAPI.shared.cleanM3U8URL(from: raw, extraParams: ["ap": "1"]) : URL(string: raw))
+        currentSourceLabel = useClean ? "Chuẩn" : (isVsmov ? "Dự phòng (Proxy)" : "Dự phòng")
         guard let url = resolved else {
             isFailed = true; isBuffering = false; errorMessage = "URL không hợp lệ."; return
         }
@@ -170,7 +173,7 @@ final class MacPlayerEngine: ObservableObject {
 
         stallTimer?.cancel()
         stallTimer = Task { [weak self] in
-            try? await Task.sleep(nanoseconds: 8_500_000_000)
+            try? await Task.sleep(nanoseconds: 18_000_000_000)
             guard !Task.isCancelled, let self = self else { return }
             if self.isBuffering && self.currentTime < 0.5 && !self.didFailover {
                 self.tryFailover(for: ep, reason: "Đang chuyển sang nguồn dự phòng...")
@@ -211,6 +214,21 @@ final class MacPlayerEngine: ObservableObject {
                     self.stallTimer?.cancel()
                     let dur = obs.duration.seconds
                     if dur.isFinite && dur > 0 { self.duration = dur }
+                    if let group = obs.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+                        let pref = AppPreferences.shared.defaultSubtitleLang.lowercased()
+                        if pref == "off" {
+                            obs.select(nil, in: group)
+                        } else {
+                            let match = group.options.first { opt in
+                                let code = (opt.locale?.language.languageCode?.identifier ?? opt.extendedLanguageTag ?? "").lowercased()
+                                let title = opt.displayName.lowercased()
+                                return pref == "en" ? (code.hasPrefix("en") || title.contains("english")) : (code.hasPrefix("vi") || title.contains("việt"))
+                            } ?? group.options.first
+                            if let match = match {
+                                obs.select(match, in: group)
+                            }
+                        }
+                    }
                     if self.pendingResumeSec > 3 {
                         let target = min(self.pendingResumeSec, max(0, dur - 10))
                         self.pendingResumeSec = 0

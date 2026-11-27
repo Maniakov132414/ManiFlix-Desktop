@@ -108,7 +108,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub Release v1.1.1
+    name: Publish GitHub Release v1.2.0
     needs: [ build-windows, build-macos ]
     runs-on: ubuntu-latest
     steps:
@@ -124,16 +124,16 @@ jobs:
           test -s release-assets/ManiFlix.exe
           test -s release-assets/ManiFlix-macOS.dmg
 
-      - name: Publish Release v1.1.1
+      - name: Publish Release v1.2.0
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.1.1
-          name: ManiFlix Desktop v1.1.1
+          tag_name: v1.2.0
+          name: ManiFlix Desktop v1.2.0
           body: |
-            ## ManiFlix Desktop v1.1.1
-            - Tối ưu hiệu năng 60/120Hz ProMotion trên macOS: giải mã & nén ảnh poster đa luồng ngoài main thread với `ImageIO` + `URLCache` 64 MB, loại bỏ blur toàn khung và đổ bóng nặng khi cuộn lưới phim.
-            - Tối ưu hiệu năng WebView2 60/120fps trên Windows: loại bỏ blur đắt đỏ trên nền, cập nhật DOM tại chỗ cho Hero/Pagination, tối ưu cuộn mượt `content-visibility`.
-            - Đầy đủ nâng cấp Speedtest Cloudflare Edge đa luồng, trình phát phim tự ẩn điều khiển & ngăn kéo tập, và gỡ bỏ hoàn toàn nút Ghim nổi.
+            ## ManiFlix Desktop v1.2.0
+            - Chọn ngôn ngữ lần đầu mở app (Tiếng Việt / English), tự động đồng bộ ngôn ngữ giao diện và phụ đề mặc định.
+            - Thêm cài đặt chọn Ngôn ngữ ứng dụng & Phụ đề mặc định (Tiếng Việt / English / Tắt) cùng bộ chọn phụ đề rời `.vtt` từ VSMov ngay trong trình phát.
+            - Hiển thị badge đa phụ đề (Vietsub + Engsub) trên Banner và thẻ phim, tối ưu failover stream VSMov.
           files: |
             release-assets/ManiFlix.exe
             release-assets/ManiFlix-macOS.dmg

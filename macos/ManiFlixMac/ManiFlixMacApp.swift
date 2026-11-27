@@ -30,6 +30,12 @@ struct ManiFlixMacApp: App {
                 .tint(prefs.currentAccentColor)
                 .task { await appState.bootstrapSession() }
                 .sheet(isPresented: $appState.showAuthSheet) { AuthSheetView() }
+                .sheet(isPresented: Binding(
+                    get: { !prefs.hasCompletedLanguageSetup },
+                    set: { if !$0 { prefs.hasCompletedLanguageSetup = true } }
+                )) {
+                    MacLanguageSetupSheet()
+                }
                 .sheet(isPresented: $appState.isPlayerPresented, onDismiss: { appState.stopPlayback() }) {
                     if let engine = appState.activeEngine {
                         MacPlayerView(engine: engine)
@@ -167,5 +173,62 @@ struct MacRootShell: View {
             .buttonStyle(.plain)
             .adaptiveGlassCapsule(interactive: true, tint: selectedTab == .search ? prefs.currentAccentColor : nil)
         }
+    }
+}
+
+struct MacLanguageSetupSheet: View {
+    @ObservedObject private var prefs = AppPreferences.shared
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            Text("Chọn ngôn ngữ / Choose Language")
+                .font(.title3.weight(.bold))
+            Text("Lựa chọn sẽ tự động thiết lập ngôn ngữ giao diện và phụ đề mặc định.")
+                .font(.caption)
+                .foregroundColor(.secondary)
+
+            Button {
+                prefs.uiLanguage = "vi"
+                prefs.defaultSubtitleLang = "vi"
+                prefs.hasCompletedLanguageSetup = true
+                dismiss()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Tiếng Việt").font(.headline)
+                        Text("Giao diện Tiếng Việt • Phụ đề mặc định: Tiếng Việt").font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "checkmark.circle.fill").foregroundColor(prefs.currentAccentColor)
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.06))
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+
+            Button {
+                prefs.uiLanguage = "en"
+                prefs.defaultSubtitleLang = "en"
+                prefs.hasCompletedLanguageSetup = true
+                dismiss()
+            } label: {
+                HStack {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("English").font(.headline)
+                        Text("English Interface • Default Subtitle: English").font(.caption).foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Image(systemName: "globe").foregroundColor(prefs.currentAccentColor)
+                }
+                .padding(12)
+                .background(Color.primary.opacity(0.06))
+                .cornerRadius(12)
+            }
+            .buttonStyle(.plain)
+        }
+        .padding(24)
+        .frame(width: 420)
     }
 }

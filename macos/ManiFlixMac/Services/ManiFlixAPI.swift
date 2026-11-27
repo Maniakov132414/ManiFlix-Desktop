@@ -49,9 +49,16 @@ final class ManiFlixAPI {
         self.speedSession = URLSession(configuration: speedConfig)
     }
 
-    func cleanM3U8URL(from rawM3U8: String) -> URL? {
+    func cleanM3U8URL(from rawM3U8: String, extraParams: [String: String] = [:]) -> URL? {
         guard var comps = URLComponents(string: "\(baseURL)/api/clean-m3u8") else { return nil }
-        comps.queryItems = [URLQueryItem(name: "url", value: rawM3U8)]
+        var items = [
+            URLQueryItem(name: "url", value: rawM3U8),
+            URLQueryItem(name: "sub", value: AppPreferences.shared.defaultSubtitleLang)
+        ]
+        for (k, v) in extraParams {
+            items.append(URLQueryItem(name: k, value: v))
+        }
+        comps.queryItems = items
         return comps.url
     }
 
