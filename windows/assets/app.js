@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '1.2.0';
+  const APP_VERSION = '1.2.1';
 
   const THEME_PRESETS = [
     { id: 'crimson_violet', name: 'ManiFlix Mặc Định', mode: 'dark', accent: '#e11d48', bg: '#0b0f19', surface: '#0f172a' },
@@ -1851,6 +1851,22 @@
           video.play().catch(() => {});
           tryResume();
         });
+        const syncWinSubTracks = () => {
+          if (!video || !video.textTracks || !hls) return;
+          const idx = hls.subtitleTrack;
+          const trk = (idx >= 0 && hls.subtitleTracks) ? hls.subtitleTracks[idx] : null;
+          const activeLang = trk ? String(trk.lang || '').toLowerCase() : '';
+          const activeName = trk ? String(trk.name || '').toLowerCase() : '';
+          for (let i = 0; i < video.textTracks.length; i++) {
+            const tt = video.textTracks[i];
+            if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
+            if (idx < 0) { tt.mode = 'disabled'; continue; }
+            const tL = String(tt.language || '').toLowerCase();
+            const tN = String(tt.label || '').toLowerCase();
+            const ok = (tL && activeLang && (tL === activeLang || tL.startsWith(activeLang.slice(0, 2)))) || (tN && activeName && tN === activeName) || video.textTracks.length === 1;
+            tt.mode = ok ? 'showing' : 'hidden';
+          }
+        };
         hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
           const selSub = document.getElementById('selPlayerSub');
           const tracks = hls.subtitleTracks || [];
@@ -1863,10 +1879,12 @@
             if (idx < 0) idx = tracks.findIndex(t => /vi|vie|viet/i.test((t.lang || '') + ' ' + (t.name || '')));
             if (idx >= 0) hls.subtitleTrack = idx;
           }
+          syncWinSubTracks();
           if (selSub) {
-            const opts = ['<option value="-1">Sub: Off</option>'];
+            const opts = [`<option value="-1">${tr('Tắt phụ đề', 'Sub: Off')}</option>`];
             tracks.forEach((t, i) => {
-              opts.push(`<option value="${i}" ${i === hls.subtitleTrack ? 'selected' : ''}>${esc(t.name || t.lang || 'Sub ' + (i + 1))}</option>`);
+              const nm = t.name || t.lang || ('Sub ' + (i + 1));
+              opts.push(`<option value="${i}" ${i === hls.subtitleTrack ? 'selected' : ''}>${esc(nm)}</option>`);
             });
             selSub.innerHTML = opts.join('');
             selSub.value = String(hls.subtitleTrack);
@@ -2060,6 +2078,20 @@
       const val = parseInt(selSubEl.value, 10);
       hls.subtitleTrack = val;
       hls.subtitleDisplay = val >= 0;
+      if (video && video.textTracks) {
+        const trk = (val >= 0 && hls.subtitleTracks) ? hls.subtitleTracks[val] : null;
+        const activeLang = trk ? String(trk.lang || '').toLowerCase() : '';
+        const activeName = trk ? String(trk.name || '').toLowerCase() : '';
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const tt = video.textTracks[i];
+          if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
+          if (val < 0) { tt.mode = 'disabled'; continue; }
+          const tL = String(tt.language || '').toLowerCase();
+          const tN = String(tt.label || '').toLowerCase();
+          const ok = (tL && activeLang && (tL === activeLang || tL.startsWith(activeLang.slice(0, 2)))) || (tN && activeName && tN === activeName) || video.textTracks.length === 1;
+          tt.mode = ok ? 'showing' : 'hidden';
+        }
+      }
       wakeHud();
     };
     selQuality.onchange = () => {

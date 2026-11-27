@@ -81,7 +81,7 @@ struct MovieTag: Codable, Hashable, Identifiable {
 
 struct MovieItem: Codable, Identifiable, Hashable {
     var id: String { slug }
-    let _id: String?
+    let _id: FlexibleString?
     let name: String
     let slug: String
     let origin_name: String?
@@ -109,7 +109,7 @@ struct MovieDetailResponse: Codable {
 }
 
 struct MovieDetail: Codable, Hashable {
-    let _id: String?
+    let _id: FlexibleString?
     let name: String
     let slug: String
     let origin_name: String?

@@ -36,6 +36,11 @@ enum PlayerAspectMode: String, CaseIterable, Identifiable {
     }
 }
 
+struct SubtitleTrackOption: Identifiable, Hashable {
+    let id: String
+    let name: String
+}
+
 @MainActor
 final class MacPlayerEngine: ObservableObject {
     @Published var movie: MovieDetail
@@ -61,6 +66,37 @@ final class MacPlayerEngine: ObservableObject {
     @Published var statusToast: String?
     @Published var aspectMode: PlayerAspectMode = .fitSafe
     @Published var outputDeviceName: String = "Loa MacBook / Hệ thống"
+    @Published var availableSubtitles: [SubtitleTrackOption] = []
+    @Published var selectedSubtitleId: String = "off"
+    private var subtitleOptionsMap: [String: AVMediaSelectionOption] = [:]
+
+    var currentSubtitleShortLabel: String {
+        if selectedSubtitleId == "off" { return "Phụ đề" }
+        if let cur = availableSubtitles.first(where: { $0.id == selectedSubtitleId }) {
+            if cur.name == "Tiếng Việt" { return "Sub: VI" }
+            if cur.name == "English" { return "Sub: EN" }
+            return cur.name
+        }
+        return "Phụ đề"
+    }
+
+    func selectSubtitle(id: String) {
+        guard let item = player.currentItem,
+              let group = item.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) else {
+            showToast("Tập này không có phụ đề rời")
+            return
+        }
+        if id == "off" {
+            item.select(nil, in: group)
+            selectedSubtitleId = "off"
+            showToast("Đã tắt phụ đề")
+        } else if let avOpt = subtitleOptionsMap[id] {
+            item.select(avOpt, in: group)
+            selectedSubtitleId = id
+            let lbl = availableSubtitles.first(where: { $0.id == id })?.name ?? "Phụ đề"
+            showToast("Phụ đề: \(lbl)")
+        }
+    }
 
     let player = AVPlayer()
     private var timeObserver: Any?
@@ -215,19 +251,42 @@ final class MacPlayerEngine: ObservableObject {
                     let dur = obs.duration.seconds
                     if dur.isFinite && dur > 0 { self.duration = dur }
                     if let group = obs.asset.mediaSelectionGroup(forMediaCharacteristic: .legible) {
+                        var opts: [SubtitleTrackOption] = []
+                        var map: [String: AVMediaSelectionOption] = [:]
+                        for (idx, opt) in group.options.enumerated() {
+                            let code = (opt.locale?.language.languageCode?.identifier ?? opt.extendedLanguageTag ?? "").lowercased()
+                            let rawTitle = opt.displayName
+                            let lower = rawTitle.lowercased()
+                            let isVi = code.hasPrefix("vi") || lower.contains("việt") || lower.contains("viet")
+                            let isEn = code.hasPrefix("en") || lower.contains("english") || lower.contains("anh")
+                            let cleanName = isVi ? "Tiếng Việt" : (isEn ? "English" : rawTitle)
+                            let id = "\(idx)_\(code.isEmpty ? cleanName : code)"
+                            opts.append(SubtitleTrackOption(id: id, name: cleanName))
+                            map[id] = opt
+                        }
+                        let viEn = opts.filter { $0.name == "Tiếng Việt" || $0.name == "English" }
+                        self.availableSubtitles = viEn.isEmpty ? opts : viEn
+                        self.subtitleOptionsMap = map
+
                         let pref = AppPreferences.shared.defaultSubtitleLang.lowercased()
                         if pref == "off" {
                             obs.select(nil, in: group)
+                            self.selectedSubtitleId = "off"
                         } else {
-                            let match = group.options.first { opt in
-                                let code = (opt.locale?.language.languageCode?.identifier ?? opt.extendedLanguageTag ?? "").lowercased()
-                                let title = opt.displayName.lowercased()
-                                return pref == "en" ? (code.hasPrefix("en") || title.contains("english")) : (code.hasPrefix("vi") || title.contains("việt"))
-                            } ?? group.options.first
-                            if let match = match {
-                                obs.select(match, in: group)
+                            let targetName = pref == "en" ? "English" : "Tiếng Việt"
+                            let chosen = self.availableSubtitles.first(where: { $0.name == targetName }) ?? self.availableSubtitles.first
+                            if let chosen = chosen, let avOpt = map[chosen.id] {
+                                obs.select(avOpt, in: group)
+                                self.selectedSubtitleId = chosen.id
+                            } else {
+                                obs.select(nil, in: group)
+                                self.selectedSubtitleId = "off"
                             }
                         }
+                    } else {
+                        self.availableSubtitles = []
+                        self.subtitleOptionsMap = [:]
+                        self.selectedSubtitleId = "off"
                     }
                     if self.pendingResumeSec > 3 {
                         let target = min(self.pendingResumeSec, max(0, dur - 10))

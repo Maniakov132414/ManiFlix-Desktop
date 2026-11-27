@@ -317,6 +317,44 @@ struct MacPlayerView: View {
                     .foregroundColor(Color.white.opacity(0.86))
 
                 Menu {
+                    if engine.availableSubtitles.isEmpty {
+                        Text("Không có phụ đề rời")
+                    } else {
+                        ForEach(engine.availableSubtitles) { sub in
+                            Button {
+                                engine.selectSubtitle(id: sub.id)
+                                revealControls()
+                            } label: {
+                                HStack {
+                                    Text(sub.name)
+                                    if engine.selectedSubtitleId == sub.id { Image(systemName: "checkmark") }
+                                }
+                            }
+                        }
+                        Divider()
+                        Button {
+                            engine.selectSubtitle(id: "off")
+                            revealControls()
+                        } label: {
+                            HStack {
+                                Text("Tắt phụ đề")
+                                if engine.selectedSubtitleId == "off" { Image(systemName: "checkmark") }
+                            }
+                        }
+                    }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: engine.selectedSubtitleId == "off" ? "captions.bubble" : "captions.bubble.fill")
+                        Text(engine.currentSubtitleShortLabel)
+                    }
+                    .font(.caption.weight(.medium))
+                    .foregroundColor(.white)
+                    .padding(.horizontal, 9).padding(.vertical, 5)
+                }
+                .menuStyle(.borderlessButton)
+                .adaptiveGlassCapsule(interactive: true)
+
+                Menu {
                     ForEach(PlayerAspectMode.allCases) { m in
                         Button {
                             engine.aspectMode = m
