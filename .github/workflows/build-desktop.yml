@@ -132,8 +132,8 @@ jobs:
           body: |
             ## ManiFlix Desktop v2.0.0
             - Chọn ngôn ngữ lần đầu mở app (Tiếng Việt / English), tự động đồng bộ ngôn ngữ giao diện và phụ đề mặc định.
-            - Thêm cài đặt chọn Ngôn ngữ ứng dụng & Phụ đề mặc định (Tiếng Việt / English / Tắt) cùng bộ chọn phụ đề rời `.vtt` từ VSMov ngay trong trình phát.
-            - Hiển thị badge đa phụ đề (Vietsub + Engsub) trên Banner và thẻ phim, tối ưu failover stream VSMov.
+            - Cài đặt chia tab mới: Ngôn ngữ & Phụ đề mặc định (Tiếng Việt / English / Tắt), Chủ đề (6 giao diện đồng bộ) và Tiện ích.
+            - Nút chọn phụ đề trực tiếp ngay trong trình phát, hiển thị nhãn đa phụ đề (Vietsub + Engsub), tăng tốc khởi phát và loại bỏ quảng cáo trên khung hình.
           files: |
             release-assets/ManiFlix.exe
             release-assets/ManiFlix-macOS.dmg
