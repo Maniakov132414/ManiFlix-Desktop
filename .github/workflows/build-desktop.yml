@@ -1,4 +1,4 @@
-name: Build ManiFlix Desktop (Windows + macOS)
+name: Build ManiFlix Desktop (Windows + macOS + Linux)
 
 on:
   push:
@@ -107,9 +107,171 @@ jobs:
           path: dist/ManiFlix-macOS.dmg
           retention-days: 30
 
+  build-linux:
+    name: Build Linux & Steam Deck (.AppImage + .deb)
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install Linux dependencies
+        run: |
+          sudo apt-get update && sudo apt-get install -y \
+            pkg-config \
+            libwebkit2gtk-4.1-dev \
+            libgtk-3-dev \
+            libayatana-appindicator3-dev \
+            librsvg2-dev \
+            patchelf \
+            desktop-file-utils \
+            squashfs-tools \
+            file \
+            imagemagick
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Cargo dependencies
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: windows
+
+      - name: Build ManiFlix (Linux Release)
+        run: |
+          cd windows
+          cargo build --release
+          ls -lh target/release/ManiFlix
+
+      - name: Run Self-Test Hardware & Binary Verification
+        run: |
+          ./windows/target/release/ManiFlix --self-test out.json
+          cat out.json
+          grep -q "SELF_TEST_OK" out.json
+          ldd ./windows/target/release/ManiFlix
+
+      - name: Package ManiFlix-Linux-amd64.deb & ManiFlix-Linux-x86_64.AppImage
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          WORK_DIR="/tmp/maniflix-linux-pkg"
+          DEB_ROOT="$WORK_DIR/deb-root"
+          rm -rf "$WORK_DIR"
+          mkdir -p \
+            "$DEB_ROOT/DEBIAN" \
+            "$DEB_ROOT/usr/lib/maniflix" \
+            "$DEB_ROOT/usr/bin" \
+            "$DEB_ROOT/usr/share/applications"
+
+          install -m 0755 windows/target/release/ManiFlix "$DEB_ROOT/usr/lib/maniflix/ManiFlix"
+          strip --strip-unneeded "$DEB_ROOT/usr/lib/maniflix/ManiFlix" || true
+          chmod 0755 "$DEB_ROOT/usr/lib/maniflix/ManiFlix"
+
+          cat << 'EOF' > "$DEB_ROOT/usr/bin/maniflix"
+          #!/bin/sh
+          if [ -n "$WAYLAND_DISPLAY" ] && [ -e /proc/driver/nvidia/version ] && [ -z "$WEBKIT_DISABLE_DMABUF_RENDERER" ]; then
+            export WEBKIT_DISABLE_DMABUF_RENDERER=1
+          fi
+          exec /usr/lib/maniflix/ManiFlix "$@"
+          EOF
+          chmod 0755 "$DEB_ROOT/usr/bin/maniflix"
+
+          cat << 'EOF' > "$DEB_ROOT/usr/share/applications/maniflix.desktop"
+          [Desktop Entry]
+          Name=ManiFlix
+          Comment=ManiFlix Streaming Cinema (3D Liquid Glass)
+          Exec=maniflix %U
+          Icon=maniflix
+          Terminal=false
+          Type=Application
+          Categories=AudioVideo;Video;Player;TV;
+          StartupWMClass=ManiFlix
+          EOF
+          chmod 0644 "$DEB_ROOT/usr/share/applications/maniflix.desktop"
+          desktop-file-validate "$DEB_ROOT/usr/share/applications/maniflix.desktop"
+
+          ICON_SRC="macos/ManiFlixMac/Assets.xcassets/AppIcon.appiconset/AppIcon.png"
+          for sz in 64x64 128x128 256x256 512x512; do
+            ICON_DIR="$DEB_ROOT/usr/share/icons/hicolor/$sz/apps"
+            mkdir -p "$ICON_DIR"
+            if command -v magick >/dev/null 2>&1; then
+              magick "$ICON_SRC" -resize "$sz" "PNG32:$ICON_DIR/maniflix.png"
+            else
+              convert "$ICON_SRC" -resize "$sz" "PNG32:$ICON_DIR/maniflix.png"
+            fi
+            chmod 0644 "$ICON_DIR/maniflix.png"
+          done
+
+          INSTALLED_KB=$(du -sk "$DEB_ROOT/usr" | awk '{print $1}')
+          cat << EOF > "$DEB_ROOT/DEBIAN/control"
+          Package: maniflix
+          Version: 2.0.1
+          Section: video
+          Priority: optional
+          Architecture: amd64
+          Installed-Size: ${INSTALLED_KB}
+          Maintainer: Maniakov <support@maniakov.bond>
+          Depends: libwebkit2gtk-4.1-0, libgtk-3-0
+          Recommends: gstreamer1.0-plugins-base, gstreamer1.0-plugins-good, gstreamer1.0-plugins-bad, gstreamer1.0-libav
+          Description: ManiFlix Streaming Cinema (3D Liquid Glass)
+           High-performance native Linux and Steam Deck cinema desktop client
+           with 3D Liquid Glass UI, multi-subtitle playback, and gamepad navigation.
+          EOF
+          chmod 0755 "$DEB_ROOT/DEBIAN"
+          chmod 0644 "$DEB_ROOT/DEBIAN/control"
+
+          dpkg-deb --build --root-owner-group "$DEB_ROOT" dist/ManiFlix-Linux-amd64.deb
+          dpkg-deb --info dist/ManiFlix-Linux-amd64.deb
+          dpkg-deb --contents dist/ManiFlix-Linux-amd64.deb
+          test -s dist/ManiFlix-Linux-amd64.deb
+
+          APPDIR="$WORK_DIR/ManiFlix.AppDir"
+          mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor"
+          install -m 0755 "$DEB_ROOT/usr/lib/maniflix/ManiFlix" "$APPDIR/usr/bin/ManiFlix"
+          ln -sf ManiFlix "$APPDIR/usr/bin/maniflix"
+          cp -R "$DEB_ROOT/usr/share/icons/hicolor/." "$APPDIR/usr/share/icons/hicolor/"
+          cp "$DEB_ROOT/usr/share/applications/maniflix.desktop" "$APPDIR/maniflix.desktop"
+          cp "$DEB_ROOT/usr/share/applications/maniflix.desktop" "$APPDIR/usr/share/applications/maniflix.desktop"
+          cp "$DEB_ROOT/usr/share/icons/hicolor/256x256/apps/maniflix.png" "$APPDIR/maniflix.png"
+          cp "$DEB_ROOT/usr/share/icons/hicolor/256x256/apps/maniflix.png" "$APPDIR/.DirIcon"
+
+          cat << 'EOF' > "$APPDIR/AppRun"
+          #!/bin/sh
+          HERE="$(dirname "$(readlink -f "${0}")")"
+          export PATH="${HERE}/usr/bin:${PATH}"
+          if [ -n "$WAYLAND_DISPLAY" ] && [ -e /proc/driver/nvidia/version ] && [ -z "$WEBKIT_DISABLE_DMABUF_RENDERER" ]; then
+            export WEBKIT_DISABLE_DMABUF_RENDERER=1
+          fi
+          exec "$HERE/usr/bin/ManiFlix" "$@"
+          EOF
+          chmod 0755 "$APPDIR/AppRun"
+
+          WORKSPACE_DIST="$PWD/dist"
+          pushd "$WORK_DIR" >/dev/null
+          curl -fsSL --retry 5 --retry-delay 3 --retry-all-errors \
+            -o appimagetool-x86_64.AppImage \
+            "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+          chmod +x appimagetool-x86_64.AppImage
+          ./appimagetool-x86_64.AppImage --appimage-extract >/dev/null
+          ARCH=x86_64 ./squashfs-root/AppRun ManiFlix.AppDir "$WORKSPACE_DIST/ManiFlix-Linux-x86_64.AppImage"
+          popd >/dev/null
+
+          chmod +x dist/ManiFlix-Linux-x86_64.AppImage
+          file dist/ManiFlix-Linux-x86_64.AppImage
+          test -s dist/ManiFlix-Linux-x86_64.AppImage
+          ls -lh dist/ManiFlix-Linux-x86_64.AppImage dist/ManiFlix-Linux-amd64.deb
+
+      - name: Upload Linux Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ManiFlix-Linux
+          path: |
+            dist/ManiFlix-Linux-x86_64.AppImage
+            dist/ManiFlix-Linux-amd64.deb
+          retention-days: 30
+
   release:
     name: Publish GitHub Release v2.0.1
-    needs: [ build-windows, build-macos ]
+    needs: [ build-windows, build-macos, build-linux ]
     runs-on: ubuntu-latest
     steps:
       - name: Download Built Artifacts
@@ -123,6 +285,8 @@ jobs:
           ls -lh release-assets
           test -s release-assets/ManiFlix.exe
           test -s release-assets/ManiFlix-macOS.dmg
+          test -s release-assets/ManiFlix-Linux-x86_64.AppImage
+          test -s release-assets/ManiFlix-Linux-amd64.deb
 
       - name: Publish Release v2.0.1
         uses: softprops/action-gh-release@v2
@@ -130,13 +294,17 @@ jobs:
           tag_name: v2.0.1
           name: ManiFlix Desktop v2.0.1
           body: |
-            ## ManiFlix Desktop v2.0.1
-            - Chọn ngôn ngữ lần đầu mở app (Tiếng Việt / English), tự động đồng bộ ngôn ngữ giao diện và phụ đề mặc định.
-            - Cài đặt chia tab mới: Ngôn ngữ & Phụ đề mặc định (Tiếng Việt / English / Tắt), Chủ đề (6 giao diện đồng bộ) và Tiện ích.
-            - Nút chọn phụ đề trực tiếp ngay trong trình phát, hiển thị nhãn đa phụ đề (Vietsub + Engsub), tăng tốc khởi phát và loại bỏ quảng cáo trên khung hình.
+            ## ManiFlix Desktop v2.0.1 (Build 201 — Windows, macOS, Linux & Steam Deck)
+            - **Hỗ trợ chính thức Linux & Steam Deck (Native Rust + WebKitGTK)**: Bổ sung bản chạy ngay `ManiFlix-Linux-x86_64.AppImage` (mọi bản phân phối Linux & SteamOS) và gói cài đặt `ManiFlix-Linux-amd64.deb` (Ubuntu / Debian / Linux Mint), tương thích mượt mà với Wayland, X11 và Gamescope.
+            - **Điều khiển Tay cầm 60fps (Steam Deck / Xbox / DualSense)**: Điều hướng giao diện thông minh bằng D-Pad & cần gạt, phím tắt tua nhanh, đổi tập, chuyển phụ đề trực tiếp và tự động toàn màn hình trên Steam Deck Gaming Mode.
+            - **Biểu tượng & Giao diện ManiFlix 3D Liquid Glass 2.0.1**: Đồng bộ logo M-Play kính nổi 3D trong suốt trên Windows, macOS, Linux và Steam Deck, cùng kho Phim Mới 2026 & Đề Xuất thông minh.
+            - **Luồng phát sạch & đa phụ đề**: Khởi phát siêu tốc không quảng cáo, chọn phụ đề trực tiếp (Tiếng Việt / English / Tắt), căn chỉnh lệch phụ đề và đồng bộ 6 chủ đề giao diện.
+            - **Bản cài đặt**: `ManiFlix.exe` (Windows), `ManiFlix-macOS.dmg` (macOS), `ManiFlix-Linux-x86_64.AppImage` (Linux Universal & Steam Deck), `ManiFlix-Linux-amd64.deb` (Ubuntu / Debian).
           files: |
             release-assets/ManiFlix.exe
             release-assets/ManiFlix-macOS.dmg
+            release-assets/ManiFlix-Linux-x86_64.AppImage
+            release-assets/ManiFlix-Linux-amd64.deb
           overwrite_files: true
           make_latest: true
         env:

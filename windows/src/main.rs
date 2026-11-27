@@ -9,9 +9,13 @@ use std::time::Duration;
 use tao::dpi::LogicalSize;
 use tao::event::{Event, WindowEvent};
 use tao::event_loop::{ControlFlow, EventLoopBuilder};
+#[cfg(target_os = "linux")]
+use tao::platform::unix::WindowExtUnix;
 use tao::window::{Fullscreen, Window, WindowBuilder};
 use wry::http::{header, Method, Request, Response, StatusCode};
 use wry::WebViewBuilder;
+#[cfg(target_os = "linux")]
+use wry::WebViewBuilderExtUnix;
 #[cfg(windows)]
 use wry::WebViewBuilderExtWindows;
 
@@ -23,6 +27,11 @@ const STYLES_CSS: &str = include_str!("../assets/styles.css");
 const APP_JS: &str = include_str!("../assets/app.js");
 const HLS_JS: &str = include_str!("../assets/hls.min.js");
 const ICON_RGBA_64: &[u8] = include_bytes!("../assets/icon_64x64.rgba");
+
+#[cfg(windows)]
+const APP_START_URL: &str = "http://maniflix.localhost/";
+#[cfg(not(windows))]
+const APP_START_URL: &str = "maniflix://localhost/";
 
 #[derive(Debug)]
 enum UserEvent {
@@ -42,6 +51,28 @@ fn attach_parent_console_if_needed() {
 
 #[cfg(not(target_os = "windows"))]
 fn attach_parent_console_if_needed() {}
+
+fn should_start_fullscreen() -> bool {
+    if std::env::args().any(|a| a == "--fullscreen" || a == "--steamdeck") {
+        return true;
+    }
+    if std::env::var("SteamDeck")
+        .map(|v| {
+            let trimmed = v.trim();
+            trimmed == "1" || trimmed.eq_ignore_ascii_case("true")
+        })
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    if std::env::var_os("GAMESCOPE_WAYLAND_DISPLAY")
+        .map(|v| !v.is_empty())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    false
+}
 
 fn run_self_test_if_requested() -> Option<i32> {
     let args: Vec<String> = std::env::args().collect();
@@ -142,8 +173,14 @@ fn handle_custom_protocol(
         return Response::builder()
             .status(StatusCode::NO_CONTENT)
             .header(header::ACCESS_CONTROL_ALLOW_ORIGIN, "*")
-            .header(header::ACCESS_CONTROL_ALLOW_HEADERS, "Authorization, Content-Type, Accept")
-            .header(header::ACCESS_CONTROL_ALLOW_METHODS, "GET, POST, PUT, DELETE, OPTIONS")
+            .header(
+                header::ACCESS_CONTROL_ALLOW_HEADERS,
+                "Authorization, Content-Type, Accept, Range",
+            )
+            .header(
+                header::ACCESS_CONTROL_ALLOW_METHODS,
+                "GET, POST, PUT, DELETE, OPTIONS",
+            )
             .body(Vec::new())
             .unwrap_or_else(|_| Response::new(Vec::new()));
     }
@@ -156,7 +193,7 @@ fn handle_custom_protocol(
     }
 
     match path {
-        "/" | "/index.html" => static_asset("text/html; charset=utf-8", INDEX_HTML.as_bytes()),
+        "" | "/" | "/index.html" => static_asset("text/html; charset=utf-8", INDEX_HTML.as_bytes()),
         "/assets/styles.css" => static_asset("text/css; charset=utf-8", STYLES_CSS.as_bytes()),
         "/assets/app.js" => static_asset("application/javascript; charset=utf-8", APP_JS.as_bytes()),
         "/assets/hls.min.js" => {
@@ -198,20 +235,31 @@ fn main() {
         std::process::exit(code);
     }
 
+    let start_fullscreen = should_start_fullscreen();
     let event_loop = EventLoopBuilder::<UserEvent>::with_user_event().build();
     let proxy = event_loop.create_proxy();
 
     let app_icon = tao::window::Icon::from_rgba(ICON_RGBA_64.to_vec(), 64, 64).ok();
 
-    let window = WindowBuilder::new()
+    let mut win_builder = WindowBuilder::new()
         .with_title("ManiFlix")
         .with_inner_size(LogicalSize::new(1180.0, 760.0))
         .with_min_inner_size(LogicalSize::new(360.0, 640.0))
-        .with_window_icon(app_icon)
+        .with_window_icon(app_icon);
+
+    if start_fullscreen {
+        win_builder = win_builder.with_fullscreen(Some(Fullscreen::Borderless(None)));
+    }
+
+    let window = win_builder
         .build(&event_loop)
         .expect("Failed to create ManiFlix window");
 
-    let initial_tel = snapshot_window_telemetry(&window);
+    let mut initial_tel = snapshot_window_telemetry(&window);
+    if start_fullscreen && !initial_tel.fullscreen {
+        initial_tel.fullscreen = true;
+        initial_tel.layout_mode = "desktop".to_string();
+    }
     let shared_win = Arc::new(Mutex::new(initial_tel));
 
     let shared_win_proto = Arc::clone(&shared_win);
@@ -226,7 +274,9 @@ fn main() {
                 responder.respond(resp);
             });
         })
-        .with_url("http://maniflix.localhost/")
+        .with_url(APP_START_URL)
+        .with_autoplay(true)
+        .with_clipboard(true)
         .with_devtools(cfg!(debug_assertions));
 
     #[cfg(windows)]
@@ -234,9 +284,20 @@ fn main() {
         "--disable-features=msWebOOUI,msPdfOOUI,msSmartScreenProtection --autoplay-policy=no-user-gesture-required --enable-gpu-rasterization --enable-zero-copy",
     );
 
+    #[cfg(target_os = "linux")]
+    let webview = {
+        let vbox = window
+            .default_vbox()
+            .expect("Failed to acquire GTK default vbox from window");
+        builder
+            .build_gtk(vbox)
+            .expect("Failed to create WebKitGTK WebView")
+    };
+
+    #[cfg(not(target_os = "linux"))]
     let webview = builder
         .build(&window)
-        .expect("Failed to create WebView2");
+        .expect("Failed to create WebView");
 
     event_loop.run(move |event, _, control_flow| {
         *control_flow = ControlFlow::Wait;

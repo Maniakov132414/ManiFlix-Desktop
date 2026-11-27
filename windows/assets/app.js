@@ -65,9 +65,20 @@
       fullscreen: '<path d="M8 3H5a2 2 0 0 0-2 2v3"/><path d="M21 8V5a2 2 0 0 0-2-2h-3"/><path d="M3 16v3a2 2 0 0 0 2 2h3"/><path d="M16 21h3a2 2 0 0 0 2-2v-3"/>',
       unfullscreen: '<path d="M4 14h6v6"/><path d="M20 10h-6V4"/><path d="M14 10l7-7"/><path d="M3 21l7-7"/>',
       list: '<line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/>',
-      refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>'
+      refresh: '<polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/>',
+      subtitles: '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="6" y1="15" x2="10" y2="15"/><line x1="14" y1="15" x2="18" y2="15"/><line x1="6" y1="11" x2="14" y2="11"/>',
+      gamepad: '<rect x="2" y="6" width="20" height="12" rx="5"/><line x1="6" y1="12" x2="10" y2="12"/><line x1="8" y1="10" x2="8" y2="14"/><circle cx="15" cy="11" r="1" fill="currentColor"/><circle cx="17" cy="13" r="1" fill="currentColor"/>'
     };
     return `<svg viewBox="0 0 24 24" width="${size}" height="${size}" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0">${paths[name] || ''}</svg>`;
+  }
+
+  function formatServerLabel(rawName, idx) {
+    const s = String(rawName || '').trim();
+    if (/thuyết\s*minh|thuyet\s*minh/i.test(s)) return `Thuyết minh #${idx + 1}`;
+    if (/lồng\s*tiếng|long\s*tieng/i.test(s)) return `Lồng tiếng #${idx + 1}`;
+    if (/engsub|english/i.test(s)) return `Engsub #${idx + 1}`;
+    if (/vietsub|phụ\s*đề|phu\s*de/i.test(s)) return `Vietsub #${idx + 1}`;
+    return `Máy chủ #${idx + 1}`;
   }
 
   function safeJsonParse(raw, fallback) {
@@ -638,9 +649,9 @@
           <h2 class="hero-title" id="heroTitle">${esc(hero.name)}</h2>
           <div class="hero-sub" id="heroSub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
           <div class="hero-actions">
-            <button class="btn-accent" id="btnHeroPlay" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
-            <button class="btn-glass" id="btnHeroDetail" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>Chi tiết</span></button>
-            <button class="btn-glass" id="btnHeroFav" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
+            <button class="btn-accent hero-btn" id="btnHeroPlay" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
+            <button class="btn-glass hero-btn" id="btnHeroDetail" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>Chi tiết</span></button>
+            <button class="btn-glass hero-btn" id="btnHeroFav" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
           </div>
         </div>
       </div>
@@ -756,7 +767,7 @@
 
     let html = `<div class="chips-row">`;
     for (const c of CATEGORIES) {
-      html += `<button class="chip ${state.category === c.id ? 'active' : ''}" data-cat="${c.id}">${esc(c.label)}</button>`;
+      html += `<button class="chip cat-chip ${state.category === c.id ? 'active' : ''}" data-cat="${c.id}">${esc(c.label)}</button>`;
     }
     html += `</div>`;
 
@@ -935,7 +946,7 @@
         ${franchiseHtml}
         <div class="glass-box">
           <div class="chips-row">
-            ${servers.map((s, i) => `<button class="chip ${i === state.selectedServerIdx ? 'active' : ''}" data-srv-idx="${i}">${esc(s.server_name)}</button>`).join('')}
+            ${servers.map((s, i) => `<button class="chip ${i === state.selectedServerIdx ? 'active' : ''}" data-srv-idx="${i}">${esc(formatServerLabel(s.server_name, i))}</button>`).join('')}
           </div>
           <div class="ep-toolbar">
             <div style="font-weight:700">Danh sách tập (${srv.server_data.length})</div>
@@ -1092,7 +1103,7 @@
               <select id="selDefaultSub">
                 <option value="vi" ${(state.prefs.defaultSubLang || 'vi') === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
                 <option value="en" ${state.prefs.defaultSubLang === 'en' ? 'selected' : ''}>English</option>
-                <option value="off" ${state.prefs.defaultSubLang === 'off' ? 'selected' : ''}>${tr('Tắt phụ đề', 'Off')}</option>
+                <option value="off" ${state.prefs.defaultSubLang === 'off' ? 'selected' : ''}>Tắt phụ đề</option>
               </select>
             </div>
           </div>
@@ -1231,7 +1242,20 @@
       </div>`;
   }
 
-  function renderMonitorSubPage() {
+  function getActiveGamepadLabel() {
+    if (!navigator.getGamepads) return '';
+    try {
+      const pads = navigator.getGamepads() || [];
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) {
+          return String(pads[i].id || 'Gamepad').replace(/\s*\([^)]*\)\s*/g, ' ').trim() || 'Tay cầm 60fps';
+        }
+      }
+    } catch {}
+    return '';
+  }
+
+  function renderMonitorSubPage(showBackBtn = true) {
     const si = state.monitor.sysinfo;
     const ns = state.monitor.netStats;
     const dl = state.monitor.dlMbps;
@@ -1248,11 +1272,27 @@
     const t1080 = dl >= 12;
     const t4k = dl >= 28 && (!si || si.totalRamMb >= 6000);
 
+    let osDisplay = '...';
+    if (si) {
+      const nameStr = String(si.osName || '').trim();
+      const verStr = String(si.osVersion || '').trim();
+      const archStr = si.arch ? ` (${si.arch})` : '';
+      if (verStr && verStr !== 'Unknown' && !nameStr.toLowerCase().includes(verStr.toLowerCase())) {
+        osDisplay = `${nameStr} ${verStr}${archStr}`;
+      } else {
+        osDisplay = `${nameStr || 'Linux / Desktop'}${archStr}`;
+      }
+    }
+    const kernelDisplay = si ? (si.kernelVersion || 'Mặc định hệ thống') : '...';
+    const runtimeDisplay = si ? (si.runtime || 'Native WebView') : '...';
+    const dpiScale = si && si.window && si.window.scaleFactor ? si.window.scaleFactor : (window.devicePixelRatio || 1);
+    const gpLabel = getActiveGamepadLabel();
+
     return `
       <div class="settings-wrap" style="max-width:980px">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:12px">
           <div style="display:flex;align-items:center;gap:8px">
-            <button class="detail-back" style="margin:0" data-subpage="main">${svgIcon('back', 14)}<span>Cài đặt</span></button>
+            ${showBackBtn ? `<button class="detail-back" style="margin:0" data-subpage="main">${svgIcon('back', 14)}<span>Cài đặt</span></button>` : ''}
             <h3 style="margin:0">Kiểm tra mạng & Thiết bị</h3>
             <span class="win-pill" style="color:#30D158;border-color:#30D158">LIVE</span>
           </div>
@@ -1295,13 +1335,16 @@
 
         <div class="spec-grid">
           <div class="glass-box">
-            <div style="font-weight:700;margin-bottom:8px">Phần cứng thiết bị</div>
-            <div class="spec-kv"><span>Hệ điều hành</span><strong>${si ? esc(si.osName + ' ' + si.osVersion) : '...'}</strong></div>
+            <div style="font-weight:700;margin-bottom:8px">Phần cứng & Môi trường</div>
+            <div class="spec-kv"><span>Hệ điều hành</span><strong>${esc(osDisplay)}</strong></div>
+            <div class="spec-kv"><span>Nhân Kernel</span><strong>${esc(kernelDisplay)}</strong></div>
+            <div class="spec-kv"><span>Runtime hiển thị</span><strong>${esc(runtimeDisplay)}</strong></div>
             <div class="spec-kv"><span>CPU</span><strong>${si ? esc(si.cpuBrand) : '...'}</strong></div>
             <div class="spec-kv"><span>Nhân CPU</span><strong>${si ? `${si.cpuPhysicalCores} vật lý / ${si.cpuLogicalCores} luồng` : '...'}</strong></div>
             <div class="spec-kv"><span>RAM Hệ thống</span><strong>${si ? `${(si.usedRamMb/1024).toFixed(1)} / ${(si.totalRamMb/1024).toFixed(1)} GB (Trống ${(si.freeRamMb/1024).toFixed(1)} GB)` : '...'}</strong></div>
-            <div class="spec-kv"><span>Ổ đĩa (${si ? esc(si.diskMount) : 'C:'})</span><strong>${si ? `Trống ${si.diskFreeGb} / ${si.diskTotalGb} GB` : '...'}</strong></div>
-            <div class="spec-kv"><span>Cửa sổ & Màn hình</span><strong>${si ? `${si.window.width}x${si.window.height} (${si.window.refreshRateHz} Hz)` : '...'}</strong></div>
+            <div class="spec-kv"><span>Ổ đĩa (${si ? esc(si.diskMount || '/') : '/'})</span><strong>${si ? `Trống ${si.diskFreeGb} / ${si.diskTotalGb} GB` : '...'}</strong></div>
+            <div class="spec-kv"><span>Cửa sổ & HiDPI</span><strong>${si ? `${si.window.width}x${si.window.height} @ ${si.window.refreshRateHz} Hz (${Number(dpiScale).toFixed(2)}x)` : '...'}</strong></div>
+            <div class="spec-kv"><span>Tay cầm (Gamepad)</span><strong>${gpLabel ? esc(gpLabel) : 'Chế độ chờ (0% CPU)'}</strong></div>
           </div>
           <div class="glass-box">
             <div style="font-weight:700;margin-bottom:8px">Máy chủ & Mạng (phim.maniakov.bond)</div>
@@ -1343,11 +1386,13 @@
     plot(seriesB, colorB);
   }
 
+  function isMonitorVisible() {
+    return !state.detailSlug && (state.tab === 'monitor' || (state.tab === 'settings' && state.settingsSubPage === 'monitor'));
+  }
+
   function refreshMonitorChartsIfVisible() {
-    if (state.tab === 'settings' && state.settingsSubPage === 'monitor') {
+    if (isMonitorVisible()) {
       render();
-      drawChart('canvasNetSpeed', state.monitor.dlSeries, state.monitor.ulSeries, '#30D158', '#0A84FF');
-      drawChart('canvasPingLoad', state.monitor.pingSeries, state.monitor.serverCpuSeries, '#FF9F0A', '#FA2D48');
     }
   }
 
@@ -1498,7 +1543,7 @@
     stopMonitorLoop();
     pollMonitor('full');
     state.monitor.timer = setInterval(() => {
-      if (state.tab === 'settings' && state.settingsSubPage === 'monitor') {
+      if (isMonitorVisible()) {
         pollMonitor(state.monitor.liveProbe ? 'live1mb' : 'telemetry');
       }
     }, 8000);
@@ -1527,6 +1572,9 @@
       nextEp: () => { if (active) active.stepEpisode(1); },
       prevEp: () => { if (active) active.stepEpisode(-1); },
       triggerSkip: () => { if (active) active.triggerSkip(); },
+      cycleSubtitle: () => { if (active) active.cycleSubtitle(); },
+      adjustSubDelay: (delta) => { if (active) active.adjustSubDelay(delta); },
+      resetSubDelay: () => { if (active) active.resetSubDelay(); },
       _setActive: (inst) => { active = inst; }
     };
   })();
@@ -1552,6 +1600,9 @@
     let mediaSrc = null;
     let gainNode = null;
     let curSrcIsClean = true;
+    let activeSubLang = ['vi', 'en', 'off'].includes(state.prefs.defaultSubLang) ? state.prefs.defaultSubLang : 'vi';
+    let subDelaySec = 0;
+    let useCustomSubOverlay = false;
 
     const srv0 = servers[serverIndex] || { server_data: [] };
     const ep0 = srv0.server_data[episodeIndex];
@@ -1561,6 +1612,7 @@
       <div class="player-overlay" id="playerOverlay">
         <div id="playerStage" class="player-stage">
           <video id="videoEl" autoplay playsinline></video>
+          <div id="playerSubOverlay" class="player-sub-overlay hidden"></div>
         </div>
 
         <div class="player-buffering hidden" id="playerBuffering"></div>
@@ -1569,11 +1621,11 @@
         <div class="player-topbar" id="playerTopbar">
           <div class="player-title-wrap">
             <div class="player-title" id="playerTitleText"></div>
-            <div class="player-sub" id="playerSourceLbl">Nguồn: Chuẩn (clean-m3u8)</div>
+            <div class="player-sub" id="playerSourceLbl">Luồng phát: Tối ưu HD</div>
           </div>
           <div style="display:flex;gap:6px;align-items:center">
-            <button class="p-btn" id="btnPlayerDrawer" title="Danh sách tập & server">${svgIcon('list', 14)}<span>Tập phim</span></button>
-            <button class="p-btn" id="btnPlayerClose" title="Đóng trình phát (Esc)">${svgIcon('close', 14)}<span>Đóng</span></button>
+            <button class="p-btn" id="btnPlayerDrawer" title="Danh sách tập & máy chủ">${svgIcon('list', 14)}<span>Tập phim</span></button>
+            <button class="p-btn" id="btnPlayerClose" title="Đóng trình phát (Esc / Tay cầm B)">${svgIcon('close', 14)}<span>Đóng</span></button>
           </div>
         </div>
 
@@ -1595,8 +1647,8 @@
               <button class="p-btn p-btn-icon" id="btnPlayPause" title="Phát / Tạm dừng (Space/K)">${svgIcon('pause', 15)}</button>
               <button class="p-btn" id="btnSeekBack" title="Lùi 10 giây (J / Trái)">${svgIcon('replay10', 14)}<span>10s</span></button>
               <button class="p-btn" id="btnSeekFwd" title="Tiến 10 giây (L / Phải)"><span>10s</span>${svgIcon('forward10', 14)}</button>
-              <button class="p-btn p-btn-icon" id="btnPrevEp" title="Tập trước (P)">${svgIcon('prev', 14)}</button>
-              <button class="p-btn p-btn-icon" id="btnNextEp" title="Tập sau (N)">${svgIcon('next', 14)}</button>
+              <button class="p-btn p-btn-icon" id="btnPrevEp" title="Tập trước (P / LB)">${svgIcon('prev', 14)}</button>
+              <button class="p-btn p-btn-icon" id="btnNextEp" title="Tập sau (N / RB)">${svgIcon('next', 14)}</button>
               <div class="p-vol-wrap">
                 <button class="p-btn p-btn-icon" id="btnMute" title="Tắt/Bật tiếng (M)">${svgIcon('vol2', 15)}</button>
                 <input type="range" class="p-range" id="volRange" min="0" max="1" step="0.02" value="1" title="Âm lượng" />
@@ -1612,9 +1664,16 @@
             </div>
 
             <div class="player-ctrl-group">
-              <select class="p-select" id="selPlayerSub" title="Phụ đề">
-                <option value="-1">Sub: Auto</option>
+              <select class="p-select" id="selPlayerSub" title="Ngôn ngữ phụ đề (C / Tay cầm Y)">
+                <option value="vi" ${activeSubLang === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
+                <option value="en" ${activeSubLang === 'en' ? 'selected' : ''}>English</option>
+                <option value="off" ${activeSubLang === 'off' ? 'selected' : ''}>Tắt phụ đề</option>
               </select>
+              <div class="p-sub-sync" title="Đồng bộ phụ đề (-10s đến +10s, phím [ / ])">
+                <button class="p-btn p-sub-step" id="btnSubDelayMinus" type="button" title="Lùi phụ đề 0.5 giây ([)">-</button>
+                <button class="p-btn p-sub-val" id="btnSubDelayReset" type="button" title="Đặt lại độ trễ phụ đề 0.0s">0.0s</button>
+                <button class="p-btn p-sub-step" id="btnSubDelayPlus" type="button" title="Tiến phụ đề 0.5 giây (])">+</button>
+              </div>
               <select class="p-select" id="selPlayerQuality" title="Chất lượng HLS">
                 <option value="-1" selected>Auto</option>
               </select>
@@ -1626,16 +1685,16 @@
                 <option value="2">2.0x</option>
               </select>
               <button class="p-btn" id="btnPlayerAspect">Tỉ lệ: Gốc</button>
-              <button class="p-btn" id="btnFailover">Đổi nguồn</button>
+              <button class="p-btn" id="btnFailover">Đổi luồng</button>
               <button class="p-btn p-btn-icon" id="btnPlayerPip" title="Hình trong hình (PiP)">${svgIcon('pip', 15)}</button>
-              <button class="p-btn p-btn-icon ${state.desktop.fullscreen ? 'active' : ''}" id="btnPlayerFullscreen" title="Toàn màn hình (F / F11)">${svgIcon(state.desktop.fullscreen ? 'unfullscreen' : 'fullscreen', 15)}</button>
+              <button class="p-btn p-btn-icon ${state.desktop.fullscreen ? 'active' : ''}" id="btnPlayerFullscreen" title="Toàn màn hình (F / F11 / Tay cầm X)">${svgIcon(state.desktop.fullscreen ? 'unfullscreen' : 'fullscreen', 15)}</button>
             </div>
           </div>
         </div>
 
         <aside class="player-drawer" id="playerDrawer">
           <div class="player-drawer-hdr">
-            <strong>Danh sách tập & Nguồn</strong>
+            <strong>Danh sách tập & Máy chủ</strong>
             <button class="p-btn p-btn-icon" id="btnCloseDrawer">${svgIcon('close', 14)}</button>
           </div>
           <div class="player-drawer-body">
@@ -1766,7 +1825,7 @@
       const srvChips = document.getElementById('drawerServerChips');
       const epListEl = document.getElementById('drawerEpList');
       srvChips.innerHTML = servers.map((s, i) => `
-        <button class="chip ${i === serverIndex ? 'active' : ''}" data-drawer-srv="${i}">${esc(s.server_name)}</button>
+        <button class="chip ${i === serverIndex ? 'active' : ''}" data-drawer-srv="${i}">${esc(formatServerLabel(s.server_name, i))}</button>
       `).join('');
       const list = currentSrv().server_data || [];
       const q = drawerFilter.trim().toLowerCase();
@@ -1829,8 +1888,197 @@
       selQuality.innerHTML = opts.join('');
     }
 
+    const subOverlayEl = document.getElementById('playerSubOverlay');
+    const selSubEl = document.getElementById('selPlayerSub');
+    const btnSubMinus = document.getElementById('btnSubDelayMinus');
+    const btnSubReset = document.getElementById('btnSubDelayReset');
+    const btnSubPlus = document.getElementById('btnSubDelayPlus');
+
+    function subLangDisplayName(code) {
+      if (code === 'en') return 'English';
+      if (code === 'off') return 'Tắt phụ đề';
+      return 'Tiếng Việt';
+    }
+
+    function classifySubTrack(langRaw, nameRaw) {
+      const combined = `${langRaw || ''} ${nameRaw || ''}`.toLowerCase();
+      if (/\b(en|eng|english)\b/.test(combined)) return 'en';
+      if (/\b(vi|vie|viet)\b|tiếng\s*việt|tieng\s*viet/.test(combined)) return 'vi';
+      return '';
+    }
+
+    function shiftCuesInTrack(tt, delaySec) {
+      if (!tt || !tt.cues) return true;
+      let writable = true;
+      for (let i = 0; i < tt.cues.length; i++) {
+        const cue = tt.cues[i];
+        if (cue._mfOrigStart === undefined) {
+          cue._mfOrigStart = cue.startTime;
+          cue._mfOrigEnd = cue.endTime;
+        }
+        if (cue._mfAppliedDelay === delaySec) continue;
+        const rawStart = cue._mfOrigStart + delaySec;
+        const rawEnd = cue._mfOrigEnd + delaySec;
+        const newStart = rawEnd <= 0 ? 0 : Math.max(0, rawStart);
+        const newEnd = rawEnd <= 0 ? 0 : Math.max(newStart, rawEnd);
+        try {
+          if (newStart > cue.endTime) {
+            cue.endTime = newEnd;
+            cue.startTime = newStart;
+          } else {
+            cue.startTime = newStart;
+            cue.endTime = newEnd;
+          }
+          cue._mfAppliedDelay = delaySec;
+        } catch {
+          writable = false;
+        }
+      }
+      return writable;
+    }
+
+    function renderFallbackSubCue() {
+      if (!subOverlayEl) return;
+      if (!useCustomSubOverlay || activeSubLang === 'off' || !video || !video.textTracks) {
+        subOverlayEl.classList.add('hidden');
+        subOverlayEl.innerHTML = '';
+        return;
+      }
+      const targetTime = (video.currentTime || 0) - subDelaySec;
+      const lines = [];
+      for (let i = 0; i < video.textTracks.length; i++) {
+        const tt = video.textTracks[i];
+        if (!tt._mfSelected || !tt.cues) continue;
+        for (let j = 0; j < tt.cues.length; j++) {
+          const cue = tt.cues[j];
+          const s = cue._mfOrigStart !== undefined ? cue._mfOrigStart : cue.startTime;
+          const e = cue._mfOrigEnd !== undefined ? cue._mfOrigEnd : cue.endTime;
+          if (targetTime >= s && targetTime <= e && cue.text) {
+            lines.push(String(cue.text).replace(/<[^>]+>/g, '').trim());
+          }
+        }
+      }
+      if (lines.length) {
+        subOverlayEl.innerHTML = `<span class="player-sub-line">${esc(lines.join('\n'))}</span>`;
+        subOverlayEl.classList.remove('hidden');
+      } else {
+        subOverlayEl.classList.add('hidden');
+        subOverlayEl.innerHTML = '';
+      }
+    }
+
+    function syncSubtitleState() {
+      if (selSubEl && selSubEl.value !== activeSubLang) {
+        selSubEl.value = activeSubLang;
+      }
+      if (btnSubReset) {
+        const sign = subDelaySec > 0 ? '+' : '';
+        btnSubReset.textContent = `${sign}${subDelaySec.toFixed(1)}s`;
+      }
+
+      if (hls) {
+        const tracks = hls.subtitleTracks || [];
+        if (activeSubLang === 'off') {
+          hls.subtitleTrack = -1;
+          hls.subtitleDisplay = false;
+        } else if (tracks.length > 0) {
+          let idx = tracks.findIndex(t => classifySubTrack(t.lang, t.name) === activeSubLang);
+          if (idx < 0 && activeSubLang === 'vi') {
+            idx = tracks.findIndex(t => classifySubTrack(t.lang, t.name) !== 'en');
+          }
+          hls.subtitleDisplay = idx >= 0;
+          hls.subtitleTrack = idx;
+        }
+      }
+
+      useCustomSubOverlay = false;
+      if (video && video.textTracks) {
+        let matchedIdx = -1;
+        if (activeSubLang !== 'off') {
+          if (hls && hls.subtitleTrack >= 0 && hls.subtitleTracks && hls.subtitleTracks[hls.subtitleTrack]) {
+            const trk = hls.subtitleTracks[hls.subtitleTrack];
+            const hLang = String(trk.lang || '').toLowerCase();
+            const hName = String(trk.name || '').toLowerCase();
+            for (let i = 0; i < video.textTracks.length; i++) {
+              const tt = video.textTracks[i];
+              if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
+              const tL = String(tt.language || '').toLowerCase();
+              const tN = String(tt.label || '').toLowerCase();
+              if ((tL && hLang && (tL === hLang || tL.startsWith(hLang.slice(0, 2)))) || (tN && hName && tN === hName)) {
+                matchedIdx = i;
+                break;
+              }
+            }
+          }
+          if (matchedIdx < 0) {
+            for (let i = 0; i < video.textTracks.length; i++) {
+              const tt = video.textTracks[i];
+              if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
+              if (classifySubTrack(tt.language, tt.label) === activeSubLang) {
+                matchedIdx = i;
+                break;
+              }
+            }
+          }
+          if (matchedIdx < 0 && activeSubLang === 'vi' && video.textTracks.length === 1) {
+            const only = video.textTracks[0];
+            if ((only.kind === 'subtitles' || only.kind === 'captions') && classifySubTrack(only.language, only.label) !== 'en') {
+              matchedIdx = 0;
+            }
+          }
+        }
+
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const tt = video.textTracks[i];
+          if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
+          const isTarget = (i === matchedIdx && activeSubLang !== 'off');
+          tt._mfSelected = isTarget;
+          if (!isTarget) {
+            tt.mode = 'disabled';
+          } else {
+            const writable = shiftCuesInTrack(tt, subDelaySec);
+            if (!writable && subDelaySec !== 0) {
+              useCustomSubOverlay = true;
+              tt.mode = 'hidden';
+            } else {
+              tt.mode = 'showing';
+            }
+          }
+        }
+      }
+      renderFallbackSubCue();
+    }
+
+    function setSubtitleLanguage(nextLang, withToast = false) {
+      activeSubLang = ['vi', 'en', 'off'].includes(nextLang) ? nextLang : 'vi';
+      state.prefs.defaultSubLang = activeSubLang;
+      savePrefs();
+      syncSubtitleState();
+      const lbl = subLangDisplayName(activeSubLang);
+      showFlash('subtitles', lbl);
+      if (withToast) toast(`Phụ đề: ${lbl}`);
+      wakeHud();
+    }
+
+    function cycleSubtitle() {
+      const order = ['vi', 'en', 'off'];
+      const next = order[(order.indexOf(activeSubLang) + 1) % order.length];
+      setSubtitleLanguage(next, true);
+    }
+
+    function setSubtitleDelay(nextDelay, announce = true) {
+      const clamped = Math.max(-10, Math.min(10, Math.round(nextDelay * 10) / 10));
+      subDelaySec = Object.is(clamped, -0) ? 0 : clamped;
+      syncSubtitleState();
+      if (announce) {
+        const sign = subDelaySec > 0 ? '+' : '';
+        showFlash('subtitles', `Độ trễ phụ đề: ${sign}${subDelaySec.toFixed(1)}s`);
+      }
+      wakeHud();
+    }
+
     function attachStream(srcUrl, label, rawUrl, resumeSec) {
-      document.getElementById('playerSourceLbl').textContent = `Nguồn: ${label}`;
+      document.getElementById('playerSourceLbl').textContent = `Luồng phát: ${label}`;
       if (hls) { hls.destroy(); hls = null; }
       selQuality.innerHTML = '<option value="-1" selected>Auto</option>';
       let soughtResume = false;
@@ -1841,8 +2089,16 @@
         }
       };
 
+      const isHttpOrigin = window.location.protocol === 'http:' || window.location.protocol === 'https:';
+
       if (window.Hls && window.Hls.isSupported()) {
-        hls = new window.Hls({ enableWorker: true, startFragPrefetch: true, subtitleDisplay: true });
+        hls = new window.Hls({
+          enableWorker: isHttpOrigin,
+          startFragPrefetch: true,
+          subtitleDisplay: true,
+          maxBufferLength: 45,
+          backBufferLength: 60
+        });
         hls.loadSource(srcUrl);
         hls.attachMedia(video);
         hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
@@ -1850,53 +2106,23 @@
           video.playbackRate = parseFloat(selSpeed.value) || 1;
           video.play().catch(() => {});
           tryResume();
+          syncSubtitleState();
         });
-        const syncWinSubTracks = () => {
-          if (!video || !video.textTracks || !hls) return;
-          const idx = hls.subtitleTrack;
-          const trk = (idx >= 0 && hls.subtitleTracks) ? hls.subtitleTracks[idx] : null;
-          const activeLang = trk ? String(trk.lang || '').toLowerCase() : '';
-          const activeName = trk ? String(trk.name || '').toLowerCase() : '';
-          for (let i = 0; i < video.textTracks.length; i++) {
-            const tt = video.textTracks[i];
-            if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
-            if (idx < 0) { tt.mode = 'disabled'; continue; }
-            const tL = String(tt.language || '').toLowerCase();
-            const tN = String(tt.label || '').toLowerCase();
-            const ok = (tL && activeLang && (tL === activeLang || tL.startsWith(activeLang.slice(0, 2)))) || (tN && activeName && tN === activeName) || video.textTracks.length === 1;
-            tt.mode = ok ? 'showing' : 'hidden';
-          }
-        };
         hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
-          const selSub = document.getElementById('selPlayerSub');
-          const tracks = hls.subtitleTracks || [];
-          const defSub = (state.prefs.defaultSubLang || 'vi').toLowerCase();
-          if (defSub === 'off') {
-            hls.subtitleTrack = -1;
-          } else {
-            const re = defSub === 'en' ? /\b(en|eng|english)\b/i : /vi|vie|viet/i;
-            let idx = tracks.findIndex(t => re.test((t.lang || '') + ' ' + (t.name || '')));
-            if (idx < 0) idx = tracks.findIndex(t => /vi|vie|viet/i.test((t.lang || '') + ' ' + (t.name || '')));
-            if (idx >= 0) hls.subtitleTrack = idx;
-          }
-          syncWinSubTracks();
-          if (selSub) {
-            const opts = [`<option value="-1">${tr('Tắt phụ đề', 'Sub: Off')}</option>`];
-            tracks.forEach((t, i) => {
-              const nm = t.name || t.lang || ('Sub ' + (i + 1));
-              opts.push(`<option value="${i}" ${i === hls.subtitleTrack ? 'selected' : ''}>${esc(nm)}</option>`);
-            });
-            selSub.innerHTML = opts.join('');
-            selSub.value = String(hls.subtitleTrack);
-          }
+          syncSubtitleState();
         });
+        if (window.Hls.Events.SUBTITLE_FRAG_PROCESSED) {
+          hls.on(window.Hls.Events.SUBTITLE_FRAG_PROCESSED, () => {
+            syncSubtitleState();
+          });
+        }
         hls.on(window.Hls.Events.ERROR, (_, data) => {
           if (data.fatal) {
-            const isVs = rawUrl.includes('#vsmov.m3u8');
-            const fbUrl = isVs ? (`/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(state.prefs.defaultSubLang || 'vi')}&ap=1`) : rawUrl;
+            const hasVirtualHash = rawUrl.includes('#');
+            const fbUrl = hasVirtualHash ? (`/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(activeSubLang)}&ap=1`) : rawUrl;
             if (srcUrl !== fbUrl) {
-              curSrcIsClean = isVs;
-              attachStream(fbUrl, isVs ? 'Dự phòng (proxy)' : 'Dự phòng (gốc)', rawUrl, resumeSec);
+              curSrcIsClean = hasVirtualHash;
+              attachStream(fbUrl, hasVirtualHash ? 'Dự phòng (Relay)' : 'Dự phòng (Trực tiếp)', rawUrl, resumeSec);
             }
           }
         });
@@ -1906,7 +2132,15 @@
           video.playbackRate = parseFloat(selSpeed.value) || 1;
           tryResume();
           renderScrubberMarkers();
+          syncSubtitleState();
+          video.play().catch(() => {});
         };
+      }
+
+      if (video && video.textTracks && !video.textTracks._mfBound) {
+        video.textTracks._mfBound = true;
+        video.textTracks.addEventListener('addtrack', () => syncSubtitleState());
+        video.textTracks.addEventListener('change', () => renderFallbackSubCue());
       }
     }
 
@@ -1961,8 +2195,8 @@
       }
 
       const rawUrl = ep.link_m3u8.trim();
-      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(state.prefs.defaultSubLang || 'vi')}`;
-      attachStream(cleanUrl, 'Chuẩn (clean-m3u8)', rawUrl, resumeSec);
+      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(activeSubLang)}`;
+      attachStream(cleanUrl, 'Tối ưu HD', rawUrl, resumeSec);
 
       const epDigits = (ep.slug || String(episodeIndex + 1)).replace(/\D+/g, '') || '1';
       const titleHint = movie.origin_name || movie.name || '';
@@ -2072,28 +2306,14 @@
       showFlash('vol2', `Âm lượng ${Math.round(val * 100)}%`);
       wakeHud();
     };
-    const selSubEl = document.getElementById('selPlayerSub');
-    if (selSubEl) selSubEl.onchange = () => {
-      if (!hls) return;
-      const val = parseInt(selSubEl.value, 10);
-      hls.subtitleTrack = val;
-      hls.subtitleDisplay = val >= 0;
-      if (video && video.textTracks) {
-        const trk = (val >= 0 && hls.subtitleTracks) ? hls.subtitleTracks[val] : null;
-        const activeLang = trk ? String(trk.lang || '').toLowerCase() : '';
-        const activeName = trk ? String(trk.name || '').toLowerCase() : '';
-        for (let i = 0; i < video.textTracks.length; i++) {
-          const tt = video.textTracks[i];
-          if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
-          if (val < 0) { tt.mode = 'disabled'; continue; }
-          const tL = String(tt.language || '').toLowerCase();
-          const tN = String(tt.label || '').toLowerCase();
-          const ok = (tL && activeLang && (tL === activeLang || tL.startsWith(activeLang.slice(0, 2)))) || (tN && activeName && tN === activeName) || video.textTracks.length === 1;
-          tt.mode = ok ? 'showing' : 'hidden';
-        }
-      }
-      wakeHud();
-    };
+    if (selSubEl) {
+      selSubEl.onchange = () => {
+        setSubtitleLanguage(selSubEl.value, false);
+      };
+    }
+    if (btnSubMinus) btnSubMinus.onclick = () => setSubtitleDelay(subDelaySec - 0.5, true);
+    if (btnSubReset) btnSubReset.onclick = () => setSubtitleDelay(0, true);
+    if (btnSubPlus) btnSubPlus.onclick = () => setSubtitleDelay(subDelaySec + 0.5, true);
     selQuality.onchange = () => {
       if (!hls) return;
       hls.currentLevel = parseInt(selQuality.value, 10);
@@ -2128,12 +2348,12 @@
       const ep = currentEp();
       if (!ep) return;
       const rawUrl = ep.link_m3u8.trim();
-      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(state.prefs.defaultSubLang || 'vi')}`;
-      const isVs = rawUrl.includes('#vsmov.m3u8');
-      const fbUrl = isVs ? (cleanUrl + '&ap=1') : rawUrl;
+      const cleanUrl = `/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(activeSubLang)}`;
+      const hasVirtualHash = rawUrl.includes('#');
+      const fbUrl = hasVirtualHash ? (cleanUrl + '&ap=1') : rawUrl;
       const curPos = video.currentTime || 0;
       curSrcIsClean = !curSrcIsClean;
-      attachStream(curSrcIsClean ? cleanUrl : fbUrl, curSrcIsClean ? 'Chuẩn (clean-m3u8)' : (isVs ? 'Dự phòng (proxy)' : 'Dự phòng (gốc)'), rawUrl, curPos);
+      attachStream(curSrcIsClean ? cleanUrl : fbUrl, curSrcIsClean ? 'Tối ưu HD' : (hasVirtualHash ? 'Dự phòng (Relay)' : 'Dự phòng (Trực tiếp)'), rawUrl, curPos);
       wakeHud();
     };
 
@@ -2204,6 +2424,13 @@
 
     video.ontimeupdate = () => {
       syncScrubberUi();
+      if (subDelaySec !== 0 && video.textTracks) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const tt = video.textTracks[i];
+          if (tt._mfSelected && !useCustomSubOverlay) shiftCuesInTrack(tt, subDelaySec);
+        }
+      }
+      if (useCustomSubOverlay) renderFallbackSubCue();
       const t = video.currentTime || 0;
       const dur = video.duration || 0;
 
@@ -2260,7 +2487,10 @@
       toggleMute,
       toggleFullscreen: () => windowOp('fullscreen'),
       stepEpisode,
-      triggerSkip
+      triggerSkip,
+      cycleSubtitle,
+      adjustSubDelay: (delta) => setSubtitleDelay(subDelaySec + delta, true),
+      resetSubDelay: () => setSubtitleDelay(0, true)
     });
 
     loadCurrentEpisode(true);
@@ -2339,6 +2569,29 @@
     draw();
   }
 
+  let gpInteracting = false;
+  let gpFocusedEl = null;
+  let gpFocusRestoreSelector = '';
+
+  function restoreGamepadFocusIfActive() {
+    if (!gpInteracting || playerCtrl.isOpen()) return;
+    if (gpFocusedEl && document.body.contains(gpFocusedEl) && gpFocusedEl.offsetParent !== null) {
+      gpFocusedEl.classList.add('mf-gp-focus');
+      return;
+    }
+    if (gpFocusRestoreSelector) {
+      try {
+        const candidate = document.querySelector(gpFocusRestoreSelector);
+        if (candidate && candidate.offsetParent !== null) {
+          setGamepadFocus(candidate, false);
+          return;
+        }
+      } catch {}
+    }
+    const fallback = getDefaultBrowsingFocusTarget();
+    if (fallback) setGamepadFocus(fallback, false);
+  }
+
   function render() {
     document.querySelectorAll('.nav-item, .bnav-item').forEach(btn => {
       btn.classList.toggle('active', btn.dataset.tab === state.tab);
@@ -2353,10 +2606,17 @@
       mc.innerHTML = renderSearch();
     } else if (state.tab === 'library') {
       mc.innerHTML = renderLibrary();
+    } else if (state.tab === 'monitor') {
+      mc.innerHTML = renderMonitorSubPage(false);
     } else {
       mc.innerHTML = renderSettings();
     }
     bindDynamicEvents();
+    if (isMonitorVisible()) {
+      drawChart('canvasNetSpeed', state.monitor.dlSeries, state.monitor.ulSeries, '#30D158', '#0A84FF');
+      drawChart('canvasPingLoad', state.monitor.pingSeries, state.monitor.serverCpuSeries, '#FF9F0A', '#FA2D48');
+    }
+    restoreGamepadFocusIfActive();
   }
 
   function bindDynamicEvents() {
@@ -2556,13 +2816,29 @@
     if (btnSpeed) btnSpeed.onclick = () => { toast('Đang đo Speedtest...'); pollMonitor('full'); };
   }
 
-  function focusSearchTab() {
-    state.tab = 'search';
+  const SIDEBAR_TABS = ['discover', 'search', 'library', 'monitor', 'settings'];
+
+  function switchTab(nextTab) {
+    if (!SIDEBAR_TABS.includes(nextTab)) return;
+    state.tab = nextTab;
     state.detailSlug = null;
-    stopMonitorLoop();
+    if (nextTab === 'settings') state.settingsSubPage = 'main';
+    if (nextTab === 'monitor' || (nextTab === 'settings' && state.settingsSubPage === 'monitor')) {
+      startMonitorLoop();
+    } else {
+      stopMonitorLoop();
+    }
     render();
+  }
+
+  function focusSearchTab() {
+    switchTab('search');
     const inp = document.getElementById('searchInput');
-    if (inp) { inp.focus(); inp.select(); }
+    if (inp) {
+      inp.focus();
+      inp.select();
+      if (gpInteracting) setGamepadFocus(inp, false);
+    }
   }
 
   document.addEventListener('keydown', (e) => {
@@ -2659,17 +2935,23 @@
     } else if (k === 's') {
       e.preventDefault();
       playerCtrl.triggerSkip();
+    } else if (k === 'c') {
+      e.preventDefault();
+      playerCtrl.cycleSubtitle();
+    } else if (e.key === '[') {
+      e.preventDefault();
+      playerCtrl.adjustSubDelay(-0.5);
+    } else if (e.key === ']') {
+      e.preventDefault();
+      playerCtrl.adjustSubDelay(0.5);
+    } else if (e.key === '\\') {
+      e.preventDefault();
+      playerCtrl.resetSubDelay();
     }
   });
 
   document.querySelectorAll('.nav-item, .bnav-item').forEach(btn => {
-    btn.onclick = () => {
-      state.tab = btn.dataset.tab;
-      state.detailSlug = null;
-      if (state.tab !== 'settings' || state.settingsSubPage !== 'monitor') stopMonitorLoop();
-      else startMonitorLoop();
-      render();
-    };
+    btn.onclick = () => switchTab(btn.dataset.tab);
   });
 
   document.getElementById('btnFullscreen').onclick = () => windowOp('fullscreen');
@@ -2699,6 +2981,332 @@
       });
     }, { passive: true });
   }
+
+  // Zero-Overhead 60fps Gamepad Engine (Steam Deck / Xbox / DualSense — 0% CPU when disconnected)
+  const GP_FOCUS_SELECTOR = '.nav-item, .bnav-item, .cat-chip, .hero-btn, .movie-card, .ep-btn, .hist-row, .s-row.clickable, .sidebar-user-card, button:not([disabled]), select, input';
+  let gpRafId = 0;
+  let gpPrevBtns = {};
+  let gpActiveDir = null;
+  let gpNextRepeatAt = 0;
+
+  function hasConnectedGamepad() {
+    if (!navigator.getGamepads) return false;
+    try {
+      const pads = navigator.getGamepads();
+      if (!pads) return false;
+      for (let i = 0; i < pads.length; i++) {
+        if (pads[i] && pads[i].connected) return true;
+      }
+    } catch {}
+    return false;
+  }
+
+  function updateSidebarGamepadBadge(connected) {
+    const badge = document.getElementById('sidebarGamepadBadge');
+    if (badge) badge.classList.toggle('hidden', !connected);
+  }
+
+  function clearGamepadFocus() {
+    document.querySelectorAll('.mf-gp-focus').forEach(el => el.classList.remove('mf-gp-focus'));
+    gpFocusedEl = null;
+    gpFocusRestoreSelector = '';
+  }
+
+  function setGamepadFocus(el, scroll = true) {
+    if (!el) return;
+    gpInteracting = true;
+    document.querySelectorAll('.mf-gp-focus').forEach(n => {
+      if (n !== el) n.classList.remove('mf-gp-focus');
+    });
+    el.classList.add('mf-gp-focus');
+    gpFocusedEl = el;
+    if (el.id) {
+      gpFocusRestoreSelector = '#' + el.id;
+    } else if (el.dataset && el.dataset.tab) {
+      gpFocusRestoreSelector = `.nav-item[data-tab="${el.dataset.tab}"]`;
+    } else {
+      gpFocusRestoreSelector = '';
+    }
+    if (scroll && typeof el.scrollIntoView === 'function') {
+      el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+  }
+
+  function getVisibleFocusableCandidates() {
+    const modalRoot = document.getElementById('modalRoot');
+    const activeModal = modalRoot && modalRoot.querySelector('.modal-card');
+    const scopeRoot = activeModal || document;
+    const rawList = scopeRoot.querySelectorAll(GP_FOCUS_SELECTOR);
+    const results = [];
+    const maxY = window.innerHeight + 520;
+    const maxX = window.innerWidth + 520;
+    for (let i = 0; i < rawList.length; i++) {
+      const el = rawList[i];
+      if (el.disabled || el.closest('.hidden')) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.width < 6 || rect.height < 6) continue;
+      if (rect.bottom < -420 || rect.top > maxY || rect.right < -320 || rect.left > maxX) continue;
+      results.push({ el, rect });
+    }
+    return results;
+  }
+
+  function getDefaultBrowsingFocusTarget() {
+    const modalRoot = document.getElementById('modalRoot');
+    const modalBtn = modalRoot && modalRoot.querySelector('.modal-card button:not([disabled]), .modal-card input');
+    if (modalBtn) return modalBtn;
+    if (state.detailSlug) {
+      return document.getElementById('btnDetailPlay') || document.getElementById('btnDetailBack');
+    }
+    if (state.tab === 'search') {
+      return document.getElementById('searchInput');
+    }
+    return (
+      document.getElementById('btnHeroPlay') ||
+      document.querySelector('#mainContent .movie-card') ||
+      document.querySelector('.sidebar .nav-item.active') ||
+      document.querySelector('.bottom-nav .bnav-item.active')
+    );
+  }
+
+  function moveSpatialFocus(dx, dy) {
+    const candidates = getVisibleFocusableCandidates();
+    if (!candidates.length) return;
+    if (!gpFocusedEl || !document.body.contains(gpFocusedEl)) {
+      const first = getDefaultBrowsingFocusTarget() || candidates[0].el;
+      setGamepadFocus(first, true);
+      return;
+    }
+
+    const curRect = gpFocusedEl.getBoundingClientRect();
+    const cx = curRect.left + curRect.width * 0.5;
+    const cy = curRect.top + curRect.height * 0.5;
+    let bestEl = null;
+    let bestScore = Infinity;
+
+    for (let i = 0; i < candidates.length; i++) {
+      const { el, rect } = candidates[i];
+      if (el === gpFocusedEl) continue;
+      const tx = rect.left + rect.width * 0.5;
+      const ty = rect.top + rect.height * 0.5;
+      const vx = tx - cx;
+      const vy = ty - cy;
+      const proj = vx * dx + vy * dy;
+      if (proj <= 6) continue;
+
+      const ortho = Math.abs(vx * dy - vy * dx);
+      const overlap = dx !== 0
+        ? (Math.min(curRect.bottom, rect.bottom) - Math.max(curRect.top, rect.top))
+        : (Math.min(curRect.right, rect.right) - Math.max(curRect.left, rect.left));
+      const sameLane = overlap > 4;
+      const score = proj + (sameLane ? ortho * 0.35 : ortho * 2.5 + 110);
+      if (score < bestScore) {
+        bestScore = score;
+        bestEl = el;
+      }
+    }
+
+    if (bestEl) {
+      setGamepadFocus(bestEl, true);
+    }
+  }
+
+  function activateGamepadFocusedElement() {
+    if (!gpFocusedEl || !document.body.contains(gpFocusedEl)) {
+      const def = getDefaultBrowsingFocusTarget();
+      if (def) setGamepadFocus(def, true);
+      return;
+    }
+    const el = gpFocusedEl;
+    if (el.tagName === 'SELECT' && el.options && el.options.length > 0) {
+      el.selectedIndex = (el.selectedIndex + 1) % el.options.length;
+      el.dispatchEvent(new Event('change', { bubbles: true }));
+      const optText = el.options[el.selectedIndex]?.textContent || '';
+      if (optText) toast(optText);
+      return;
+    }
+    if (el.tagName === 'INPUT' && el.type !== 'checkbox' && el.type !== 'color') {
+      el.focus();
+      el.click();
+      return;
+    }
+    el.click();
+  }
+
+  function handleGamepadBackInBrowser() {
+    const modalRoot = document.getElementById('modalRoot');
+    if (modalRoot && modalRoot.innerHTML.trim()) {
+      if (!state.prefs.langOnboarded) {
+        state.prefs.langOnboarded = true;
+        savePrefs();
+      }
+      modalRoot.innerHTML = '';
+      restoreGamepadFocusIfActive();
+      return;
+    }
+    if (document.activeElement && (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'SELECT')) {
+      document.activeElement.blur();
+      return;
+    }
+    if (state.detailSlug) {
+      state.detailSlug = null;
+      render();
+      return;
+    }
+    if (state.tab === 'settings' && state.settingsSubPage !== 'main') {
+      state.settingsSubPage = 'main';
+      stopMonitorLoop();
+      render();
+    }
+  }
+
+  function cycleSidebarTab(delta) {
+    const modalRoot = document.getElementById('modalRoot');
+    if (modalRoot && modalRoot.innerHTML.trim()) modalRoot.innerHTML = '';
+    const curIdx = Math.max(0, SIDEBAR_TABS.indexOf(state.tab));
+    const nextIdx = (curIdx + delta + SIDEBAR_TABS.length) % SIDEBAR_TABS.length;
+    const nextTab = SIDEBAR_TABS[nextIdx];
+    switchTab(nextTab);
+    const navBtn = document.querySelector(`.sidebar .nav-item[data-tab="${nextTab}"]`) || document.querySelector(`.bottom-nav .bnav-item[data-tab="${nextTab}"]`);
+    if (navBtn && navBtn.offsetParent !== null) {
+      setGamepadFocus(navBtn, false);
+    }
+  }
+
+  function dispatchGamepadDirection(dir) {
+    if (playerCtrl.isOpen()) {
+      if (dir === 'left') playerCtrl.seekBy(-10);
+      else if (dir === 'right') playerCtrl.seekBy(10);
+      else if (dir === 'up') playerCtrl.adjustVolume(0.05);
+      else if (dir === 'down') playerCtrl.adjustVolume(-0.05);
+      return;
+    }
+    if (dir === 'left') moveSpatialFocus(-1, 0);
+    else if (dir === 'right') moveSpatialFocus(1, 0);
+    else if (dir === 'up') moveSpatialFocus(0, -1);
+    else if (dir === 'down') moveSpatialFocus(0, 1);
+  }
+
+  function dispatchGamepadButtonDown(btnIndex) {
+    gpInteracting = true;
+    if (playerCtrl.isOpen()) {
+      if (btnIndex === 0) playerCtrl.togglePlay();
+      else if (btnIndex === 1) playerCtrl.close();
+      else if (btnIndex === 2) playerCtrl.toggleFullscreen();
+      else if (btnIndex === 3) playerCtrl.cycleSubtitle();
+      else if (btnIndex === 4) playerCtrl.prevEp();
+      else if (btnIndex === 5) playerCtrl.nextEp();
+      else if (btnIndex === 9) playerCtrl.triggerSkip();
+      return;
+    }
+
+    if (btnIndex === 0) activateGamepadFocusedElement();
+    else if (btnIndex === 1) handleGamepadBackInBrowser();
+    else if (btnIndex === 2) windowOp('fullscreen');
+    else if (btnIndex === 3) focusSearchTab();
+    else if (btnIndex === 4) cycleSidebarTab(-1);
+    else if (btnIndex === 5) cycleSidebarTab(1);
+  }
+
+  function pollGamepads(now) {
+    if (!hasConnectedGamepad()) {
+      gpRafId = 0;
+      gpPrevBtns = {};
+      gpActiveDir = null;
+      updateSidebarGamepadBadge(false);
+      return;
+    }
+
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    let detectedDir = null;
+
+    for (let p = 0; p < pads.length; p++) {
+      const pad = pads[p];
+      if (!pad || !pad.connected) continue;
+
+      const prev = gpPrevBtns[pad.index] || [];
+      const next = [];
+      const btns = pad.buttons || [];
+      for (let b = 0; b < btns.length; b++) {
+        const btn = btns[b];
+        const pressed = !!(btn && (btn.pressed || btn.value > 0.6));
+        next[b] = pressed;
+        if (pressed && !prev[b] && b <= 11) {
+          dispatchGamepadButtonDown(b);
+        }
+      }
+      gpPrevBtns[pad.index] = next;
+
+      if (!detectedDir) {
+        const axX = (pad.axes && pad.axes.length > 0) ? pad.axes[0] : 0;
+        const axY = (pad.axes && pad.axes.length > 1) ? pad.axes[1] : 0;
+        const thresh = gpActiveDir ? 0.36 : 0.52;
+        if ((btns[12] && btns[12].pressed) || axY < -thresh) detectedDir = 'up';
+        else if ((btns[13] && btns[13].pressed) || axY > thresh) detectedDir = 'down';
+        else if ((btns[14] && btns[14].pressed) || axX < -thresh) detectedDir = 'left';
+        else if ((btns[15] && btns[15].pressed) || axX > thresh) detectedDir = 'right';
+      }
+    }
+
+    if (detectedDir) {
+      if (detectedDir !== gpActiveDir) {
+        gpActiveDir = detectedDir;
+        gpNextRepeatAt = now + 330;
+        dispatchGamepadDirection(detectedDir);
+      } else if (now >= gpNextRepeatAt) {
+        gpNextRepeatAt = now + 150;
+        dispatchGamepadDirection(detectedDir);
+      }
+    } else {
+      gpActiveDir = null;
+      gpNextRepeatAt = 0;
+    }
+
+    gpRafId = requestAnimationFrame(pollGamepads);
+  }
+
+  function startGamepadLoop() {
+    updateSidebarGamepadBadge(true);
+    if (!gpRafId) {
+      gpRafId = requestAnimationFrame(pollGamepads);
+    }
+  }
+
+  function stopGamepadLoop() {
+    if (gpRafId) {
+      cancelAnimationFrame(gpRafId);
+      gpRafId = 0;
+    }
+    gpPrevBtns = {};
+    gpActiveDir = null;
+    gpInteracting = false;
+    clearGamepadFocus();
+    updateSidebarGamepadBadge(false);
+  }
+
+  window.addEventListener('gamepadconnected', () => {
+    startGamepadLoop();
+    toast('Đã kết nối tay cầm 60fps');
+    if (!playerCtrl.isOpen() && !gpFocusedEl) {
+      const first = getDefaultBrowsingFocusTarget();
+      if (first) setGamepadFocus(first, false);
+    }
+    if (isMonitorVisible()) render();
+  });
+
+  window.addEventListener('gamepaddisconnected', () => {
+    if (!hasConnectedGamepad()) {
+      stopGamepadLoop();
+      if (isMonitorVisible()) render();
+    }
+  });
+
+  document.addEventListener('pointerdown', () => {
+    if (gpFocusedEl) {
+      gpInteracting = false;
+      clearGamepadFocus();
+    }
+  }, { passive: true });
 
   let resizeRaf = 0;
   window.addEventListener('resize', () => {

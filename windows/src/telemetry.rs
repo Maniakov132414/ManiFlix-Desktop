@@ -3,6 +3,11 @@ use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use sysinfo::{CpuRefreshKind, Disks, MemoryRefreshKind, Pid, ProcessesToUpdate, RefreshKind, System};
 
+#[cfg(windows)]
+const FALLBACK_DISK_MOUNT: &str = "C:\\";
+#[cfg(not(windows))]
+const FALLBACK_DISK_MOUNT: &str = "/";
+
 #[derive(Serialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowTelemetry {
@@ -80,16 +85,179 @@ struct SysCache {
 
 static SYS_CACHE: OnceLock<Mutex<SysCache>> = OnceLock::new();
 
+#[cfg(target_os = "linux")]
+fn read_linux_pretty_os_name() -> Option<String> {
+    for path in ["/etc/os-release", "/usr/lib/os-release"] {
+        if let Ok(content) = std::fs::read_to_string(path) {
+            let mut pretty_name: Option<String> = None;
+            let mut fallback_name: Option<String> = None;
+            for line in content.lines() {
+                let line = line.trim();
+                if let Some(val) = line.strip_prefix("PRETTY_NAME=") {
+                    let clean = val.trim_matches('"').trim_matches('\'').trim();
+                    if !clean.is_empty() {
+                        pretty_name = Some(clean.to_string());
+                        break;
+                    }
+                } else if let Some(val) = line.strip_prefix("NAME=") {
+                    let clean = val.trim_matches('"').trim_matches('\'').trim();
+                    if !clean.is_empty() {
+                        fallback_name = Some(clean.to_string());
+                    }
+                }
+            }
+            if pretty_name.is_some() {
+                return pretty_name;
+            }
+            if fallback_name.is_some() {
+                return fallback_name;
+            }
+        }
+    }
+    None
+}
+
+#[cfg(target_os = "linux")]
+fn detect_linux_display_server() -> &'static str {
+    let has_nonempty = |k: &str| std::env::var_os(k).map(|v| !v.is_empty()).unwrap_or(false);
+
+    if has_nonempty("GAMESCOPE_WAYLAND_DISPLAY")
+        || std::env::var("XDG_CURRENT_DESKTOP")
+            .map(|v| v.to_ascii_lowercase().contains("gamescope"))
+            .unwrap_or(false)
+    {
+        return "Gamescope";
+    }
+    if std::env::var("GDK_BACKEND")
+        .map(|v| v.trim().eq_ignore_ascii_case("x11"))
+        .unwrap_or(false)
+    {
+        return "X11";
+    }
+    if has_nonempty("WAYLAND_DISPLAY")
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.trim().eq_ignore_ascii_case("wayland"))
+            .unwrap_or(false)
+    {
+        return "Wayland";
+    }
+    if has_nonempty("DISPLAY")
+        || std::env::var("XDG_SESSION_TYPE")
+            .map(|v| v.trim().eq_ignore_ascii_case("x11"))
+            .unwrap_or(false)
+    {
+        return "X11";
+    }
+    "Wayland/X11"
+}
+
+fn build_runtime_label() -> String {
+    #[cfg(target_os = "linux")]
+    {
+        format!(
+            "Rust (tao 0.30 + wry 0.47 + sysinfo 0.32 · {})",
+            detect_linux_display_server()
+        )
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        "Rust (tao 0.30 + wry 0.47 + sysinfo 0.32)".to_string()
+    }
+}
+
+fn detect_os_name_and_version() -> (String, String) {
+    #[cfg(target_os = "linux")]
+    {
+        let os_name = read_linux_pretty_os_name()
+            .or_else(System::name)
+            .unwrap_or_else(|| "Linux".to_string());
+        let raw_ver = System::os_version().unwrap_or_default();
+        let os_version = if !raw_ver.is_empty() && os_name.contains(&raw_ver) {
+            String::new()
+        } else {
+            raw_ver
+        };
+        (os_name, os_version)
+    }
+    #[cfg(not(target_os = "linux"))]
+    {
+        let os_name = System::name().unwrap_or_else(|| std::env::consts::OS.to_string());
+        let os_version = System::os_version().unwrap_or_else(|| "Unknown".to_string());
+        (os_name, os_version)
+    }
+}
+
+fn format_disk_stats(disk: &sysinfo::Disk) -> (f64, f64, String) {
+    let total = disk.total_space() as f64;
+    let avail = disk.available_space() as f64;
+    let total_gb = (total / 1_073_741_824.0 * 10.0).round() / 10.0;
+    let free_gb = (avail / 1_073_741_824.0 * 10.0).round() / 10.0;
+    let mount = disk.mount_point().to_string_lossy().to_string();
+    (total_gb, free_gb, mount)
+}
+
 fn compute_primary_disk(disks: &Disks) -> (f64, f64, String) {
-    if let Some(best) = disks.iter().max_by_key(|d| d.total_space()) {
-        let total = best.total_space() as f64;
-        let avail = best.available_space() as f64;
-        let total_gb = (total / 1_073_741_824.0 * 10.0).round() / 10.0;
-        let free_gb = (avail / 1_073_741_824.0 * 10.0).round() / 10.0;
-        let mount = best.mount_point().to_string_lossy().to_string();
-        (total_gb, free_gb, mount)
-    } else {
-        (0.0, 0.0, String::from("C:\\"))
+    #[cfg(target_os = "linux")]
+    {
+        use std::path::Path;
+
+        let real_disks: Vec<&sysinfo::Disk> = disks
+            .iter()
+            .filter(|d| {
+                if d.total_space() == 0 {
+                    return false;
+                }
+                let dev = d.name().to_string_lossy();
+                if dev.starts_with("/dev/loop") {
+                    return false;
+                }
+                let mp = d.mount_point().to_string_lossy();
+                !(mp.starts_with("/snap")
+                    || mp.starts_with("/boot")
+                    || mp.starts_with("/tmp/.mount_")
+                    || mp.starts_with("/var/lib/docker")
+                    || mp.starts_with("/var/lib/containers"))
+            })
+            .collect();
+
+        let root_disk = real_disks
+            .iter()
+            .copied()
+            .find(|d| d.mount_point() == Path::new("/"));
+        let home_disk = real_disks
+            .iter()
+            .copied()
+            .find(|d| d.mount_point() == Path::new("/home"));
+
+        // On immutable distros like SteamOS, "/" is a small read-only rootfs while "/home" is user NVMe storage.
+        let chosen = match (root_disk, home_disk) {
+            (Some(r), Some(h))
+                if (r.is_read_only() || r.total_space() < 16 * 1_073_741_824)
+                    && h.total_space() > r.total_space() =>
+            {
+                Some(h)
+            }
+            (Some(r), _) => Some(r),
+            (None, Some(h)) => Some(h),
+            (None, None) => real_disks
+                .into_iter()
+                .max_by_key(|d| d.total_space())
+                .or_else(|| disks.iter().max_by_key(|d| d.total_space())),
+        };
+
+        if let Some(best) = chosen {
+            return format_disk_stats(best);
+        }
+        (0.0, 0.0, String::from(FALLBACK_DISK_MOUNT))
+    }
+
+    #[cfg(not(target_os = "linux"))]
+    {
+        if let Some(best) = disks.iter().max_by_key(|d| d.total_space()) {
+            format_disk_stats(best)
+        } else {
+            (0.0, 0.0, String::from(FALLBACK_DISK_MOUNT))
+        }
     }
 }
 
@@ -116,13 +284,14 @@ fn init_sys_cache() -> Mutex<SysCache> {
 
     let disks = Disks::new_with_refreshed_list();
     let (disk_total_gb, disk_free_gb, disk_mount) = compute_primary_disk(&disks);
+    let (os_name, os_version) = detect_os_name_and_version();
 
     Mutex::new(SysCache {
         sys,
         disks,
         last_disk_refresh: Instant::now(),
-        os_name: System::name().unwrap_or_else(|| std::env::consts::OS.to_string()),
-        os_version: System::os_version().unwrap_or_else(|| "Unknown".to_string()),
+        os_name,
+        os_version,
         kernel_version: System::kernel_version().unwrap_or_default(),
         host_name: System::host_name().unwrap_or_else(|| "Desktop".to_string()),
         cpu_brand,
@@ -170,7 +339,7 @@ pub fn collect_hardware_sysinfo(win: WindowTelemetry) -> HardwareSysInfo {
     HardwareSysInfo {
         app_name: "ManiFlix Desktop".to_string(),
         app_version: env!("CARGO_PKG_VERSION").to_string(),
-        runtime: "Rust (tao 0.30 + wry 0.47 + sysinfo 0.32)".to_string(),
+        runtime: build_runtime_label(),
         os_name: cache.os_name.clone(),
         os_version: cache.os_version.clone(),
         kernel_version: cache.kernel_version.clone(),

@@ -17,7 +17,10 @@ html, body {
   width: 100%; height: 100%;
   background: var(--bg);
   color: var(--text-primary);
-  font-family: "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  font-family: "Inter", "Cantarell", "Noto Sans", "Ubuntu", "Segoe UI Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
   overflow: hidden;
   user-select: none;
 }
@@ -127,6 +130,8 @@ html, body {
 .main-content {
   flex: 1; min-width: 0;
   overflow-y: auto; overflow-x: hidden;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
   padding: 14px 16px 76px;
   transform: translateZ(0);
 }
@@ -135,7 +140,7 @@ html, body {
 .bottom-nav {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 25;
   height: var(--bottomnav-h);
-  display: grid; grid-template-columns: repeat(4, 1fr);
+  display: grid; grid-template-columns: repeat(5, 1fr);
   background: var(--sidebar-bg);
   border-top: 1px solid var(--card-stroke);
 }
@@ -273,8 +278,9 @@ html, body {
 }
 .movie-card:hover { transform: translate3d(0, -3px, 0); }
 .poster-wrap {
-  position: relative; aspect-ratio: 2 / 3; border-radius: 10px; overflow: hidden;
-  background: var(--surface); border: 1px solid var(--card-stroke);
+  position: relative; aspect-ratio: 2 / 3; border-radius: 12px; overflow: hidden;
+  background: var(--surface); border: 1px solid rgba(255, 255, 255, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.18), 0 10px 24px rgba(0, 0, 0, 0.36);
 }
 .poster-wrap img { width: 100%; height: 100%; object-fit: cover; display: block; transform: translateZ(0); }
 .poster-badge {
@@ -311,6 +317,7 @@ html, body {
 
 .glass-box {
   background: var(--card-fill); border: 1px solid var(--card-stroke);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.13), 0 8px 22px rgba(0, 0, 0, 0.22);
   border-radius: 14px; padding: 14px; margin-bottom: 14px;
 }
 .franchise-list { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 10px; }
@@ -462,7 +469,12 @@ html, body {
 
 .spec-grid { display: grid; grid-template-columns: 1fr; gap: 12px; }
 .app-shell.desktop-mode .spec-grid { grid-template-columns: 1fr 1fr; }
-.spec-kv { display: flex; justify-content: space-between; gap: 8px; padding: 6px 0; border-bottom: 1px solid var(--card-stroke); font-size: 12.5px; }
+.spec-kv {
+  display: flex; justify-content: space-between; align-items: baseline; gap: 12px;
+  padding: 7px 0; border-bottom: 1px solid var(--card-stroke); font-size: 12.5px;
+}
+.spec-kv > span { color: var(--text-secondary); flex-shrink: 0; }
+.spec-kv > strong { text-align: right; word-break: break-word; font-weight: 600; }
 .spec-kv:last-child { border-bottom: none; }
 
 /* Cinema Player Overlay */
@@ -665,4 +677,105 @@ html, body {
 select, input[type="color"] {
   background: var(--surface); color: var(--text-primary);
   border: 1px solid var(--card-stroke); border-radius: 8px; padding: 5px 8px;
+}
+
+/* Cinema Subtitle Cues & Sync Delay Controls */
+.player-stage video::cue {
+  background: rgba(8, 8, 12, 0.78);
+  color: #ffffff;
+  font-size: clamp(15px, 2.05vw, 24px);
+  font-weight: 600;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.96);
+}
+.player-sub-overlay {
+  position: absolute; left: 8%; right: 8%; bottom: 88px; z-index: 7;
+  pointer-events: none; text-align: center;
+  transition: bottom 0.22s ease;
+}
+.player-overlay.hud-hidden .player-sub-overlay { bottom: 34px; }
+.player-sub-line {
+  display: inline-block; max-width: 100%;
+  padding: 5px 14px; border-radius: 8px;
+  background: rgba(8, 8, 12, 0.80);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  color: #fff; font-size: clamp(15px, 2.05vw, 24px); font-weight: 600; line-height: 1.42;
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.95);
+  white-space: pre-line;
+}
+.p-sub-sync {
+  display: inline-flex; align-items: center;
+  height: 32px; border-radius: 8px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: rgba(20, 20, 26, 0.84);
+}
+.p-sub-sync .p-btn {
+  height: 30px; border: none; border-radius: 0; background: transparent;
+  padding: 0 7px; font-size: 11px; font-variant-numeric: tabular-nums;
+}
+.p-sub-sync .p-btn:hover { background: rgba(255, 255, 255, 0.16); }
+.p-sub-sync .p-sub-val {
+  min-width: 44px; border-left: 1px solid rgba(255, 255, 255, 0.12);
+  border-right: 1px solid rgba(255, 255, 255, 0.12);
+  color: rgba(255, 255, 255, 0.92);
+}
+
+/* 3D Liquid Glass Gamepad Spatial Focus (.mf-gp-focus) */
+.mf-gp-focus {
+  outline: 2.5px solid var(--accent) !important;
+  outline-offset: 3px;
+  box-shadow:
+    0 0 0 5px color-mix(in srgb, var(--accent) 26%, transparent),
+    0 12px 28px rgba(0, 0, 0, 0.52),
+    inset 0 1px 0 rgba(255, 255, 255, 0.28) !important;
+  position: relative;
+  z-index: 4;
+}
+.movie-card.mf-gp-focus {
+  border-radius: 12px;
+  transform: translate3d(0, -4px, 0) scale(1.03);
+}
+.ep-btn.mf-gp-focus, .chip.mf-gp-focus, .hero-btn.mf-gp-focus {
+  transform: translate3d(0, -1px, 0) scale(1.02);
+}
+input.mf-gp-focus, select.mf-gp-focus, .nav-item.mf-gp-focus {
+  outline-offset: 1px;
+}
+
+/* Steam Deck 1280x800 (16:10) & FHD 1080p / QHD 1440p Responsive Polish */
+@media (min-width: 1080px) and (max-width: 1380px) and (max-height: 860px) {
+  .sidebar { width: 196px; padding: 12px 9px; }
+  .app-shell.desktop-mode .main-content { padding: 14px 20px 24px; }
+  .app-shell.desktop-mode .hero-card { height: 284px; }
+  .hero-title { font-size: 21px; }
+  .app-shell.desktop-mode .movie-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 13px;
+  }
+  .app-shell.desktop-mode .rail .movie-card { width: 142px; }
+  .nav-item { padding: 10px 11px; font-size: 13px; }
+  .chip { padding: 7px 14px; font-size: 12.5px; }
+}
+
+@media (min-width: 1600px) {
+  .sidebar { width: 232px; }
+  .app-shell.desktop-mode .main-content { padding: 22px 30px 32px; }
+  .app-shell.desktop-mode .hero-card { height: 380px; }
+  .hero-title { font-size: 26px; }
+  .app-shell.desktop-mode .movie-grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 15px;
+  }
+  .app-shell.desktop-mode .rail .movie-card { width: 162px; }
+  .settings-wrap { max-width: 920px; }
+}
+
+@media (min-width: 2200px) {
+  .sidebar { width: 252px; }
+  .app-shell.desktop-mode .hero-card { height: 430px; }
+  .app-shell.desktop-mode .movie-grid {
+    grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 18px;
+  }
+  .app-shell.desktop-mode .rail .movie-card { width: 182px; }
+  .settings-wrap { max-width: 1080px; }
 }
