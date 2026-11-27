@@ -1,5 +1,5 @@
 (() => {
-  const APP_VERSION = '2.0.0';
+  const APP_VERSION = '2.0.1';
 
   const THEME_PRESETS = [
     { id: 'crimson_violet', name: 'ManiFlix Mặc Định', mode: 'dark', accent: '#e11d48', bg: '#0b0f19', surface: '#0f172a' },

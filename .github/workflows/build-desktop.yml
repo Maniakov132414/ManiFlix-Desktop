@@ -108,7 +108,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub Release v2.0.0
+    name: Publish GitHub Release v2.0.1
     needs: [ build-windows, build-macos ]
     runs-on: ubuntu-latest
     steps:
@@ -124,13 +124,13 @@ jobs:
           test -s release-assets/ManiFlix.exe
           test -s release-assets/ManiFlix-macOS.dmg
 
-      - name: Publish Release v2.0.0
+      - name: Publish Release v2.0.1
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.0
-          name: ManiFlix Desktop v2.0.0
+          tag_name: v2.0.1
+          name: ManiFlix Desktop v2.0.1
           body: |
-            ## ManiFlix Desktop v2.0.0
+            ## ManiFlix Desktop v2.0.1
             - Chọn ngôn ngữ lần đầu mở app (Tiếng Việt / English), tự động đồng bộ ngôn ngữ giao diện và phụ đề mặc định.
             - Cài đặt chia tab mới: Ngôn ngữ & Phụ đề mặc định (Tiếng Việt / English / Tắt), Chủ đề (6 giao diện đồng bộ) và Tiện ích.
             - Nút chọn phụ đề trực tiếp ngay trong trình phát, hiển thị nhãn đa phụ đề (Vietsub + Engsub), tăng tốc khởi phát và loại bỏ quảng cáo trên khung hình.

@@ -164,8 +164,9 @@ html, body {
 .chip.active { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .hero-card {
-  position: relative; border-radius: 16px; overflow: hidden;
-  border: 1px solid var(--card-stroke);
+  position: relative; border-radius: 22px; overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.22), 0 18px 40px rgba(0, 0, 0, 0.45);
   height: 250px; margin-bottom: 10px;
   background: var(--surface);
 }

@@ -41,10 +41,17 @@ struct MoviePosterCard: View {
                 CachedAsyncImage(url: movie.displayPosterURL, maxPixelSize: 380)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(2.0 / 3.0, contentMode: .fill)
-                    .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
                     .overlay(
-                        RoundedRectangle(cornerRadius: 10, style: .continuous)
-                            .strokeBorder(ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.7)
+                        RoundedRectangle(cornerRadius: 13, style: .continuous)
+                            .strokeBorder(
+                                LinearGradient(
+                                    colors: [Color.white.opacity(0.32), ManiFlixTheme.cardStroke(colorScheme), Color.white.opacity(0.08)],
+                                    startPoint: .topLeading,
+                                    endPoint: .bottomTrailing
+                                ),
+                                lineWidth: 0.85
+                            )
                     )
 
                 if let badge = movie.quality ?? movie.episode_current, !badge.isEmpty {
@@ -245,14 +252,43 @@ struct DiscoverView: View {
                         startPoint: .top, endPoint: .bottom
                     )
                 )
-                .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+                .overlay(
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .strokeBorder(
+                            LinearGradient(
+                                colors: [Color.white.opacity(0.36), prefs.currentAccentColor.opacity(0.28), Color.white.opacity(0.10)],
+                                startPoint: .topLeading,
+                                endPoint: .bottomTrailing
+                            ),
+                            lineWidth: 1.0
+                        )
+                )
 
-            VStack(alignment: .leading, spacing: 6) {
-                Text("PHIM MỚI • \(movie.quality ?? "HD")")
-                    .font(.system(size: 10.5, weight: .bold))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 9).padding(.vertical, 4)
-                    .adaptiveGlassCapsule(interactive: false)
+            VStack(alignment: .leading, spacing: 7) {
+                HStack(spacing: 6) {
+                    Text(movie.quality ?? "FHD")
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 10).padding(.vertical, 4)
+                        .background(prefs.currentAccentColor.opacity(0.92))
+                        .clipShape(Capsule())
+                    if let lang = movie.lang, !lang.isEmpty {
+                        Text(lang)
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(Color(red: 0.43, green: 0.91, blue: 0.72))
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Color(red: 0.06, green: 0.73, blue: 0.51).opacity(0.22))
+                            .clipShape(Capsule())
+                    }
+                    if let yr = movie.year?.value, yr > 0 {
+                        Text(String(yr))
+                            .font(.system(size: 10.5, weight: .semibold))
+                            .foregroundColor(.white)
+                            .padding(.horizontal, 9).padding(.vertical, 4)
+                            .adaptiveGlassCapsule(interactive: false)
+                    }
+                }
 
                 Text(movie.name)
                     .font(.system(size: isCompactPhone ? 20 : 26, weight: .bold))
