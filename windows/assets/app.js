@@ -532,6 +532,112 @@
     }
   }
 
+  const VI_DIACRITIC_RE = /[àáạảãâầấậẩẫăằắặẳẵèéẹẻẽêềếệểễìíịỉĩòóọỏõôồốộổỗơờớợởỡùúụủũưừứựửữỳýỵỷỹđ]/i;
+  const PURE_CJK_RE = /^[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\s\d:!\-–—·.,'()[\]「」『』！？：、。／/]+$/;
+  const HAS_CJK_RE = /[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]/;
+  const ROMAJI_TOKEN_RE = /\b(no|wa|ga|wo|ni|kara|made|tachi|monogatari|kyoukai|kanata|shoujo|shounen|sekai|kimi|boku|ore|mahou|tensei|isekai|kuromukuro|shinonome|gekijou|saiban|kako|mirai|kimetsu|yaiba|shingeki|kyojin|jujutsu|kaisen|sousou|kusuriya|hitorigoto|kaguya|kokoro|hikari|yami|kaze|sora|hoshi|yume|kami|oni|ryuu|ouji|hime|gakuen|sensou|densetsu|bouken|yuusha|maou|seirei|tenshi|akuma|shinigami|kyoushitsu|shigatsu|ansatsu|nanatsu|taizai|shokugeki|yakusoku|fumetsu|nariagari|subarashii|hajimeru|seishun|yarou|ressha|yuukaku|katanakaji|hashira|geiko)\b/i;
+  const EN_COMMON_RE = /\b(the|beyond|boundary|of|and|in|for|with|from|into|world|story|movie|season|part|demon|slayer|attack|titan|my|hero|academia|sword|art|online|game|life|way|home|country|old|men|time|die|love|war|star|wars|lord|rings|harry|potter|avengers|spider|batman|superman|iron|captain|deadpool|wolverine|stranger|things|breaking|bad|walking|dead|house|dragon|throne|arcane|cyberpunk|edgerunners|frieren|journey|end|apothecary|diaries|solo|leveling|chainsaw|one|piece|ball|bleach|black|clover|hunter|blue|lock|wind|breaker|classroom|elite|reincarnated|slime|shield|rising|eminence|shadow|jobless|overlord|rascal|dream|bunny|girl|violet|evergarden|silent|voice|your|name|weathering|you|spirited|away|howl|moving|castle|princess|mononoke)\b/i;
+
+  function normCmp(s) {
+    return String(s || '').toLowerCase().replace(/[\s\-–—:·.,!?'()[\]"“”]+/g, ' ').trim();
+  }
+  function stripInlineCjk(s) {
+    const raw = String(s || '').trim();
+    if (!raw || PURE_CJK_RE.test(raw)) return '';
+    const cleaned = raw.replace(/\([\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af\s:!\-–—·.,']+\)/g, '').replace(/[\u3040-\u30ff\u3400-\u9fff\uac00-\ud7af]+/g, ' ').replace(/\s{2,}/g, ' ').replace(/^[\s/|\-–—:•]+|[\s/|\-–—:•]+$/g, '').trim();
+    return cleaned.length >= 2 ? cleaned : '';
+  }
+  function classifyTitleSeg(seg) {
+    const s = String(seg || '').trim();
+    if (!s) return 'empty';
+    if (PURE_CJK_RE.test(s)) return 'cjk';
+    if (VI_DIACRITIC_RE.test(s)) return 'vi';
+    const latin = HAS_CJK_RE.test(s) ? stripInlineCjk(s) : s;
+    if (!latin) return 'cjk';
+    if (VI_DIACRITIC_RE.test(latin)) return 'vi';
+    if (ROMAJI_TOKEN_RE.test(latin) && !EN_COMMON_RE.test(latin)) return 'romaji';
+    return 'en';
+  }
+  function getDisplayTitles(m) {
+    if (!m || typeof m !== 'object') return { primary: '', secondary: '', secondaryWithYear: '' };
+    const ui = state.prefs.uiLang === 'en' ? 'en' : 'vi';
+    const rawName = String(m.name || m.title || '').trim();
+    const rawOrig = String(m.origin_name || m.originName || '').trim();
+    const yearStr = (m.year && String(m.year).trim() && String(m.year) !== '0') ? String(m.year).trim() : '';
+    let viTitle = String(m.vi_name || '').trim();
+    let enTitle = String(m.en_name || '').trim();
+    let romajiTitle = String(m.romaji_name || '').trim();
+    let otherLatin = '';
+    let cjkFallback = '';
+    if (enTitle && PURE_CJK_RE.test(enTitle)) enTitle = '';
+    if (romajiTitle && PURE_CJK_RE.test(romajiTitle)) romajiTitle = '';
+    if (enTitle && HAS_CJK_RE.test(enTitle)) enTitle = stripInlineCjk(enTitle);
+    if (romajiTitle && HAS_CJK_RE.test(romajiTitle)) romajiTitle = stripInlineCjk(romajiTitle);
+    const segs = rawName.split(/\s+(?:\/|\||•|;)\s+/).concat(rawOrig.split(/\s+(?:\/|\||•|;)\s+/)).map(x => x.trim()).filter(Boolean);
+    for (const seg of segs) {
+      const kind = classifyTitleSeg(seg);
+      const cleanSeg = (kind !== 'cjk' && HAS_CJK_RE.test(seg)) ? stripInlineCjk(seg) : seg;
+      if (kind === 'vi') { if (!viTitle) viTitle = cleanSeg; }
+      else if (kind === 'en') { if (!enTitle) enTitle = cleanSeg; else if (!otherLatin && normCmp(cleanSeg) !== normCmp(enTitle)) otherLatin = cleanSeg; }
+      else if (kind === 'romaji') { if (!romajiTitle) romajiTitle = cleanSeg; else if (!otherLatin && normCmp(cleanSeg) !== normCmp(romajiTitle)) otherLatin = cleanSeg; }
+      else if (kind === 'cjk') { if (!cjkFallback) cjkFallback = seg; }
+    }
+    const anyLatin = enTitle || romajiTitle || viTitle || otherLatin || stripInlineCjk(rawName) || stripInlineCjk(rawOrig);
+    const isDist = (a, b) => !!(a && b && normCmp(a) && normCmp(b) && normCmp(a) !== normCmp(b));
+    let primary = '';
+    let secondary = '';
+    if (ui === 'en') {
+      primary = enTitle || romajiTitle || otherLatin || viTitle || anyLatin || rawName || rawOrig || cjkFallback;
+      if (romajiTitle && isDist(primary, romajiTitle) && !normCmp(primary).includes(normCmp(romajiTitle))) secondary = romajiTitle;
+      else if (otherLatin && isDist(primary, otherLatin)) secondary = otherLatin;
+      else if (viTitle && isDist(primary, viTitle)) secondary = viTitle;
+    } else if (viTitle) {
+      primary = viTitle;
+      const sp = [];
+      if (enTitle && isDist(primary, enTitle)) sp.push(enTitle);
+      if (romajiTitle && isDist(primary, romajiTitle) && (!enTitle || (isDist(enTitle, romajiTitle) && !normCmp(enTitle).includes(normCmp(romajiTitle))))) sp.push(romajiTitle);
+      if (!sp.length && otherLatin && isDist(primary, otherLatin)) sp.push(otherLatin);
+      secondary = sp.slice(0, 2).join(' • ');
+    } else {
+      primary = enTitle || romajiTitle || otherLatin || anyLatin || rawName || rawOrig || cjkFallback;
+      if (romajiTitle && isDist(primary, romajiTitle)) secondary = romajiTitle;
+      else if (enTitle && isDist(primary, enTitle)) secondary = enTitle;
+      else if (otherLatin && isDist(primary, otherLatin)) secondary = otherLatin;
+    }
+    const secondaryWithYear = secondary ? (yearStr && !secondary.includes(yearStr) ? `${secondary} (${yearStr})` : secondary) : (yearStr ? `(${yearStr})` : '');
+    return { primary, secondary, secondaryWithYear };
+  }
+
+  function formatFranchiseSeasonChip(s, frMeta, list) {
+    const ui = state.prefs.uiLang === 'en' ? 'en' : 'vi';
+    const meta = frMeta || {};
+    const prefixes = [meta.baseTitleVi, meta.baseTitleEn, meta.baseTitleRomaji, meta.baseTitle]
+      .map(x => String(x || '').trim()).filter(x => x.length >= 3).sort((a, b) => b.length - a.length);
+    const hasSeason2 = (list || []).some(it => {
+      if (Number(it && it.seasonNumber) >= 2) return true;
+      const pr = `${it?.name || ''} ${it?.nameVi || ''} ${it?.nameEn || ''} ${it?.fullTitle || ''} ${it?.slug || ''}`;
+      return /(?:phần|phan|season|ss|mùa|mua)[\s\-_]*(?:[2-9]|\d{2,}|ii|iii|iv)\b/i.test(pr);
+    });
+    let cur = String(ui === 'en' ? (s.nameEn || s.name || s.title || s.fullTitle || '') : (s.nameVi || s.name || s.title || s.fullTitle || '')).trim();
+    const rawPicked = cur;
+    for (const p of prefixes) {
+      const escRe = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      if (new RegExp(`^${escRe}[\\s:!\\-–—.]*$`, 'i').test(cur)) { cur = ''; break; }
+      const leadRe = new RegExp(`^${escRe}(?:\\s*[:\\-–—!|•]+\\s*|\\s+(?=(?:Movie|Phần|Phan|Season|SS|Mùa|OVA|ONA|Special|SP|Mini|Idol|Shinonome|Chapter|Part|Arc)\\b))`, 'i');
+      if (leadRe.test(cur)) { cur = cur.replace(leadRe, '').trim(); break; }
+    }
+    cur = cur.replace(/^[:\-–—•|\s]+/, '').trim();
+    if (!cur || /^tv\s*series$/i.test(cur)) {
+      cur = /^tv\s*series$/i.test(rawPicked) ? 'TV Series' : (hasSeason2 ? (ui === 'en' ? 'Season 1' : 'Phần 1') : 'TV Series');
+    } else if (ui === 'en' && !s.nameEn) {
+      cur = cur.replace(/^Phần\s+(\d+)\b/i, 'Season $1').replace(/^Mùa\s+(\d+)\b/i, 'Season $1');
+    } else if (ui === 'vi' && !s.nameVi) {
+      cur = cur.replace(/^Season\s+(\d+)\b/i, 'Phần $1');
+    }
+    const fullTip = (ui === 'en' ? (s.originName || s.fullTitle || cur) : (s.fullTitle || cur)) + (s.year ? ` (${s.year})` : '');
+    return { label: cur, tooltip: fullTip };
+  }
+
   function tr(vi, en) {
     return state.prefs.uiLang === 'en' ? en : vi;
   }
@@ -606,14 +712,17 @@
     const secondary = resolveImg(m.thumb_url || m.poster_url) || '';
     const badge = m.quality || m.episode_current || '';
     const yr = m.year ? `${m.year} / ` : '';
+    const t = getDisplayTitles(m);
+    const dispTitle = t.primary || m.name || m.slug;
+    const tip = t.secondary ? `${dispTitle} (${t.secondary})` : dispTitle;
     return `
-      <div class="movie-card" data-slug="${esc(m.slug)}">
+      <div class="movie-card" data-slug="${esc(m.slug)}" title="${esc(tip)}">
         <div class="poster-wrap">
-          <img loading="lazy" decoding="async" src="${esc(primary)}" data-fallback="${esc(secondary)}" alt="${esc(m.name)}" />
+          <img loading="lazy" decoding="async" src="${esc(primary)}" data-fallback="${esc(secondary)}" alt="${esc(dispTitle)}" />
           ${badge ? `<span class="poster-badge">${esc(badge)}</span>` : ''}
         </div>
-        <div class="movie-name">${esc(m.name)}</div>
-        <div class="movie-meta">${esc(yr + (m.lang || 'Vietsub'))}</div>
+        <div class="movie-name">${esc(dispTitle)}</div>
+        <div class="movie-meta">${esc(yr + formatSubBadge(m))}</div>
       </div>`;
   }
 
@@ -638,6 +747,7 @@
     if (!hero) return '';
     const bg = resolveImg(hero.thumb_url || hero.poster_url) || IMG_FALLBACK_SVG;
     const bgFb = resolveImg(hero.poster_url) || '';
+    const ht = getDisplayTitles(hero);
     return `
       <div class="hero-card" id="heroCard">
         <img class="hero-bg" id="heroBgImg" decoding="async" src="${esc(bg)}" data-fallback="${esc(bgFb)}" alt="" />
@@ -646,12 +756,12 @@
         <button class="hero-nav hero-next" id="btnHeroNext" title="Phim tiếp">${svgIcon('chevRight', 18)}</button>
         <div class="hero-body">
           <span class="hero-tag" id="heroTag">${tr('PHIM MỚI', 'NEW')} / ${esc(hero.quality || 'HD')} / ${esc(formatSubBadge(hero))}</span>
-          <h2 class="hero-title" id="heroTitle">${esc(hero.name)}</h2>
-          <div class="hero-sub" id="heroSub">${esc(hero.origin_name || '')} ${hero.year ? '(' + hero.year + ')' : ''}</div>
+          <h2 class="hero-title" id="heroTitle">${esc(ht.primary || hero.name)}</h2>
+          <div class="hero-sub" id="heroSub">${esc(ht.secondaryWithYear)}</div>
           <div class="hero-actions">
-            <button class="btn-accent hero-btn" id="btnHeroPlay" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>Xem ngay</span></button>
-            <button class="btn-glass hero-btn" id="btnHeroDetail" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>Chi tiết</span></button>
-            <button class="btn-glass hero-btn" id="btnHeroFav" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? 'Đã lưu' : 'Tủ phim'}</span></button>
+            <button class="btn-accent hero-btn" id="btnHeroPlay" data-hero-play="${esc(hero.slug)}">${svgIcon('play', 14)}<span>${tr('Xem ngay', 'Watch Now')}</span></button>
+            <button class="btn-glass hero-btn" id="btnHeroDetail" data-open-slug="${esc(hero.slug)}">${svgIcon('info', 14)}<span>${tr('Chi tiết', 'Details')}</span></button>
+            <button class="btn-glass hero-btn" id="btnHeroFav" data-fav-slug="${esc(hero.slug)}">${svgIcon(isFavorite(hero.slug) ? 'check' : 'plus', 14)}<span>${isFavorite(hero.slug) ? tr('Đã lưu', 'Saved') : tr('Tủ phim', 'My List')}</span></button>
           </div>
         </div>
       </div>
@@ -680,15 +790,16 @@
     bgImg.setAttribute('data-fb-step', '0');
     bgImg.setAttribute('data-fallback', bgFb);
     if (bgImg.src !== bg) bgImg.src = bg;
-    if (tagEl) tagEl.textContent = `PHIM MỚI / ${hero.quality || 'HD'}`;
-    if (titleEl) titleEl.textContent = hero.name || '';
-    if (subEl) subEl.textContent = `${hero.origin_name || ''} ${hero.year ? '(' + hero.year + ')' : ''}`.trim();
+    const ht = getDisplayTitles(hero);
+    if (tagEl) tagEl.textContent = `${tr('PHIM MỚI', 'NEW')} / ${hero.quality || 'HD'} / ${formatSubBadge(hero)}`;
+    if (titleEl) titleEl.textContent = ht.primary || hero.name || '';
+    if (subEl) subEl.textContent = ht.secondaryWithYear || '';
     if (playBtn) playBtn.dataset.heroPlay = hero.slug;
     if (detBtn) detBtn.dataset.openSlug = hero.slug;
     if (favBtn) {
       favBtn.dataset.favSlug = hero.slug;
       const fav = isFavorite(hero.slug);
-      favBtn.innerHTML = `${svgIcon(fav ? 'check' : 'plus', 14)}<span>${fav ? 'Đã lưu' : 'Tủ phim'}</span>`;
+      favBtn.innerHTML = `${svgIcon(fav ? 'check' : 'plus', 14)}<span>${fav ? tr('Đã lưu', 'Saved') : tr('Tủ phim', 'My List')}</span>`;
     }
     dots.querySelectorAll('.hero-dot').forEach((d, idx) => {
       d.classList.toggle('active', idx === state.heroIdx);
@@ -832,6 +943,12 @@
       ]);
       state.detailData = res;
       state.detailFranchise = fr.seasons || [];
+      state.detailFranchiseMeta = {
+        baseTitle: fr.baseTitle || '',
+        baseTitleVi: fr.baseTitleVi || res.movie?.vi_name || '',
+        baseTitleEn: fr.baseTitleEn || res.movie?.en_name || '',
+        baseTitleRomaji: fr.baseTitleRomaji || res.movie?.romaji_name || ''
+      };
       if (res.movie) setAmbientUrl(resolveImg(res.movie.poster_url || res.movie.thumb_url));
       const gSlug = res.movie?.category?.[0]?.slug;
       if (gSlug) {
@@ -890,11 +1007,16 @@
     const directors = formatPeopleList(m.director);
     const countries = Array.isArray(m.country) ? m.country.map(c => c.name).filter(Boolean).join(', ') : '';
 
+    const dt = getDisplayTitles(m);
+    const detailSubParts = [];
+    if (dt.secondary) detailSubParts.push(dt.secondary);
+    if (m.year) detailSubParts.push(String(m.year));
+    if (m.lang || (Array.isArray(m.sub_langs) && m.sub_langs.length)) detailSubParts.push(formatSubBadge(m));
     const leftCol = `
       <div>
         <img class="detail-poster" decoding="async" src="${esc(poster)}" data-fallback="${esc(posterFb)}" alt="" />
-        <h2 class="detail-title">${esc(m.name)}</h2>
-        ${m.origin_name ? `<div class="detail-origin">${esc(m.origin_name)} ${m.year ? '/ ' + esc(m.year) : ''} ${m.lang ? '/ ' + esc(m.lang) : ''}</div>` : ''}
+        <h2 class="detail-title">${esc(dt.primary || m.name)}</h2>
+        ${detailSubParts.length ? `<div class="detail-origin">${esc(detailSubParts.join(' / '))}</div>` : ''}
         <div class="detail-actions">
           <button class="btn-accent" id="btnDetailPlay">${svgIcon('play', 14)}<span>${hist ? 'Xem tiếp: ' + esc(hist.episodeName || 'Tập 1') : 'Phát'}</span></button>
           <button class="btn-glass" id="btnDetailFav" style="color:var(--text-primary)">${svgIcon('bookmark', 14)}<span>${isFavorite(m.slug) ? 'Đã lưu' : 'Lưu'}</span></button>
@@ -928,15 +1050,23 @@
 
     let franchiseHtml = '';
     if (state.detailFranchise.length > 1) {
+      const fMeta = state.detailFranchiseMeta || {};
+      const fBase = state.prefs.uiLang === 'en'
+        ? (fMeta.baseTitleEn || getDisplayTitles({ name: fMeta.baseTitle, vi_name: fMeta.baseTitleVi, en_name: fMeta.baseTitleEn, romaji_name: fMeta.baseTitleRomaji }).primary || '')
+        : (fMeta.baseTitleVi || getDisplayTitles({ name: fMeta.baseTitle, vi_name: fMeta.baseTitleVi, en_name: fMeta.baseTitleEn, romaji_name: fMeta.baseTitleRomaji }).primary || '');
+      const fHdr = state.prefs.uiLang === 'en'
+        ? (fBase ? `Franchise: ${fBase} (${state.detailFranchise.length} parts)` : `Franchise (${state.detailFranchise.length} parts)`)
+        : (fBase ? `Các phần phim: ${fBase} (${state.detailFranchise.length} phần)` : `Các phần phim (${state.detailFranchise.length})`);
       franchiseHtml = `
         <div class="glass-box">
           <div style="display:flex;justify-content:space-between;align-items:center;cursor:pointer" id="btnToggleFranchise">
-            <strong>Các phần phim (${state.detailFranchise.length})</strong>
-            <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--accent)">${state.franchiseExpanded ? 'Thu gọn ' + svgIcon('chevUp', 13) : 'Mở rộng ' + svgIcon('chevDown', 13)}</span>
+            <strong>${esc(fHdr)}</strong>
+            <span style="display:inline-flex;align-items:center;gap:4px;font-size:12px;color:var(--accent)">${state.franchiseExpanded ? tr('Thu gọn ', 'Collapse ') + svgIcon('chevUp', 13) : tr('Mở rộng ', 'Expand ') + svgIcon('chevDown', 13)}</span>
           </div>
-          ${state.franchiseExpanded ? `<div class="franchise-list">${state.detailFranchise.map(s => `
-            <button class="season-chip ${s.slug === m.slug ? 'active' : ''}" data-slug="${esc(s.slug)}">${esc(s.fullTitle || s.name || s.slug)}</button>
-          `).join('')}</div>` : ''}
+          ${state.franchiseExpanded ? `<div class="franchise-list">${state.detailFranchise.map(s => {
+            const fc = formatFranchiseSeasonChip(s, fMeta, state.detailFranchise);
+            return `<button class="season-chip ${s.slug === m.slug ? 'active' : ''}" data-slug="${esc(s.slug)}" title="${esc(fc.tooltip)}">${esc(fc.label)}</button>`;
+          }).join('')}</div>` : ''}
         </div>`;
     }
 
@@ -2224,7 +2354,7 @@
       skipBtn.classList.add('hidden');
       scrubMarkers.innerHTML = '';
 
-      document.getElementById('playerTitleText').textContent = `${movie.name} — ${ep.name}`;
+      document.getElementById('playerTitleText').textContent = `${getDisplayTitles(movie).primary || movie.name} — ${ep.name}`;
       document.getElementById('btnPrevEp').disabled = episodeIndex <= 0;
       document.getElementById('btnNextEp').disabled = episodeIndex + 1 >= srv.server_data.length;
 

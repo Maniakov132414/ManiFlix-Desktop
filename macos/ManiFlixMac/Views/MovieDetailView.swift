@@ -11,6 +11,7 @@ struct MovieDetailView: View {
     @State private var containerWidth: CGFloat = 1000
     @State private var detail: MovieDetail?
     @State private var servers: [EpisodeServer] = []
+    @State private var franchiseMeta: FranchiseResponse?
     @State private var franchiseSeasons: [FranchiseSeason] = []
     @State private var relatedMovies: [MovieItem] = []
     @State private var selectedServerIdx = 0
@@ -87,13 +88,13 @@ struct MovieDetailView: View {
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.6))
                 .shadow(color: Color.black.opacity(0.45), radius: 18, x: 0, y: 10)
 
-            Text(detail?.name ?? seedMovie?.name ?? "")
+            Text(detail?.localizedPrimaryTitle(prefs.uiLanguage) ?? seedMovie?.localizedPrimaryTitle(prefs.uiLanguage) ?? "")
                 .font(.system(size: 22, weight: .bold))
                 .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
                 .multilineTextAlignment(.center)
 
-            if let orig = detail?.origin_name ?? seedMovie?.origin_name, !orig.isEmpty {
-                Text(orig).font(.subheadline).foregroundColor(ManiFlixTheme.secondaryText(colorScheme)).multilineTextAlignment(.center)
+            if let sec = detail?.localizedSecondaryTitle(prefs.uiLanguage) ?? seedMovie?.localizedSecondaryTitle(prefs.uiLanguage), !sec.isEmpty {
+                Text(sec).font(.subheadline).foregroundColor(ManiFlixTheme.secondaryText(colorScheme)).multilineTextAlignment(.center)
             }
         }
         .frame(maxWidth: .infinity)
@@ -199,16 +200,20 @@ struct MovieDetailView: View {
     }
 
     private var franchiseSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let headerTitle = franchiseMeta?.localizedHeader(uiLang: prefs.uiLanguage, count: franchiseSeasons.count)
+            ?? (prefs.uiLanguage == "en" ? "Franchise (\(franchiseSeasons.count) parts)" : "Các phần phim (\(franchiseSeasons.count))")
+        return VStack(alignment: .leading, spacing: 10) {
             Button {
                 withAnimation(.easeInOut(duration: 0.2)) { isFranchiseExpanded.toggle() }
             } label: {
                 HStack {
-                    Text("Các phần phim (\(franchiseSeasons.count))")
+                    Text(headerTitle)
                         .font(.system(size: 16, weight: .bold))
                         .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
                     Spacer()
-                    Text(isFranchiseExpanded ? "Thu gọn" : "Mở rộng").font(.caption).foregroundColor(prefs.currentAccentColor)
+                    Text(isFranchiseExpanded ? prefs.tr("Thu gọn", "Collapse") : prefs.tr("Mở rộng", "Expand"))
+                        .font(.caption)
+                        .foregroundColor(prefs.currentAccentColor)
                 }
             }
             .buttonStyle(.plain)
@@ -218,7 +223,7 @@ struct MovieDetailView: View {
                     ForEach(franchiseSeasons) { season in
                         let isCurrent = season.slug == slug
                         NavigationLink(destination: MovieDetailView(slug: season.slug, seedMovie: nil)) {
-                            Text(season.displayFullTitle)
+                            Text(season.localizedLabel(uiLang: prefs.uiLanguage, meta: franchiseMeta, allSeasons: franchiseSeasons))
                                 .font(.caption.weight(isCurrent ? .semibold : .medium))
                                 .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
                                 .padding(.horizontal, 12).padding(.vertical, 8)
@@ -226,6 +231,7 @@ struct MovieDetailView: View {
                                 .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(isCurrent ? prefs.currentAccentColor : ManiFlixTheme.cardStroke(colorScheme), lineWidth: isCurrent ? 1.2 : 0.6))
                         }
                         .buttonStyle(.plain)
+                        .help(season.localizedTooltip(uiLang: prefs.uiLanguage))
                     }
                 }
             }
@@ -349,7 +355,8 @@ struct MovieDetailView: View {
             self.detail = res.movie
             self.servers = res.episodes ?? []
             if let fr = try? await ManiFlixAPI.shared.fetchFranchise(slug: slug) {
-                self.franchiseSeasons = fr.seasons ?? []
+                self.franchiseMeta = fr
+                self.franchiseSeasons = TitleLocalizer.sortFranchiseSeasons(fr.seasons ?? [], baseTitle: fr.baseTitle)
             }
             if let gSlug = res.movie?.category?.first?.slug,
                let rel = try? await ManiFlixAPI.shared.fetchGenre(slug: gSlug, page: 1) {

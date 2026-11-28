@@ -184,7 +184,7 @@ struct MacPlayerView: View {
             .buttonStyle(.plain)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text("\(engine.movie.name) — \(engine.currentEpisode?.name ?? "")")
+                Text("\(engine.movie.localizedPrimaryTitle(prefs.uiLanguage)) — \(engine.currentEpisode?.name ?? "")")
                     .font(.headline)
                     .foregroundColor(.white)
                     .lineLimit(1)

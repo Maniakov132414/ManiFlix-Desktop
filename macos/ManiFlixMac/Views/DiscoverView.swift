@@ -33,6 +33,7 @@ private enum DiscoverCategoryFilter: String, CaseIterable, Identifiable {
 
 struct MoviePosterCard: View {
     let movie: MovieItem
+    @ObservedObject private var prefs = AppPreferences.shared
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -66,7 +67,7 @@ struct MoviePosterCard: View {
                 }
             }
 
-            Text(movie.name)
+            Text(movie.localizedPrimaryTitle(prefs.uiLanguage))
                 .font(.system(size: 13, weight: .medium))
                 .foregroundColor(ManiFlixTheme.primaryText(colorScheme))
                 .lineLimit(1)
@@ -290,13 +291,13 @@ struct DiscoverView: View {
                     }
                 }
 
-                Text(movie.name)
+                Text(movie.localizedPrimaryTitle(prefs.uiLanguage))
                     .font(.system(size: isCompactPhone ? 20 : 26, weight: .bold))
                     .foregroundColor(.white)
                     .lineLimit(2)
 
-                if let orig = movie.origin_name, !orig.isEmpty {
-                    Text(orig).font(.subheadline).foregroundColor(Color.white.opacity(0.78)).lineLimit(1)
+                if let sec = movie.localizedSecondaryTitle(prefs.uiLanguage), !sec.isEmpty {
+                    Text(sec).font(.subheadline).foregroundColor(Color.white.opacity(0.78)).lineLimit(1)
                 }
 
                 HStack(spacing: 10) {
