@@ -32,6 +32,8 @@ struct MacPlayerView: View {
     @State private var drawerSearchQuery = ""
     @State private var isScrubbing = false
     @State private var scrubTargetSec: Double = 0
+    @State private var hoverRatio: Double? = nil
+    @State private var lastLiveScrubDate: Date = .distantPast
     @State private var keyMonitor: Any?
 
     private var displayedTime: Double {
@@ -420,19 +422,20 @@ struct MacPlayerView: View {
             let dur = max(1, engine.duration)
             let playedRatio = min(max(displayedTime / dur, 0), 1)
             let bufferedRatio = min(max(engine.bufferedDuration / dur, 0), 1)
+            let previewRatio = isScrubbing ? playedRatio : hoverRatio
 
             ZStack(alignment: .leading) {
                 Capsule()
                     .fill(Color.white.opacity(0.22))
-                    .frame(height: 5)
+                    .frame(height: (isScrubbing || hoverRatio != nil) ? 7 : 5)
 
                 Capsule()
                     .fill(Color.white.opacity(0.42))
-                    .frame(width: w * bufferedRatio, height: 5)
+                    .frame(width: w * bufferedRatio, height: (isScrubbing || hoverRatio != nil) ? 7 : 5)
 
                 Capsule()
                     .fill(prefs.currentAccentColor)
-                    .frame(width: w * playedRatio, height: 5)
+                    .frame(width: w * playedRatio, height: (isScrubbing || hoverRatio != nil) ? 7 : 5)
 
                 ForEach(engine.adMarkers) { marker in
                     let startRatio = min(max(marker.start / dur, 0), 1)
@@ -444,18 +447,51 @@ struct MacPlayerView: View {
 
                 Circle()
                     .fill(Color.white)
-                    .frame(width: isScrubbing ? 14 : 11, height: isScrubbing ? 14 : 11)
+                    .frame(
+                        width: isScrubbing ? 14 : (hoverRatio != nil ? 13 : 11),
+                        height: isScrubbing ? 14 : (hoverRatio != nil ? 13 : 11)
+                    )
                     .shadow(color: Color.black.opacity(0.4), radius: 3)
-                    .offset(x: max(0, min(w - 12, w * playedRatio - 6)))
+                    .offset(x: max(0, min(w - 14, w * playedRatio - 6)))
+
+                if let activeRatio = previewRatio, engine.duration > 0 {
+                    Text(MacPlayerEngine.formatTime(activeRatio * dur))
+                        .font(.caption2.monospacedDigit().weight(.bold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(Color.black.opacity(0.88))
+                        .clipShape(Capsule())
+                        .overlay(Capsule().stroke(Color.white.opacity(0.22), lineWidth: 1))
+                        .fixedSize()
+                        .position(x: max(26, min(w - 26, w * activeRatio)), y: -14)
+                        .allowsHitTesting(false)
+                }
             }
-            .frame(height: 18)
+            .frame(height: 22)
             .contentShape(Rectangle())
-            .gesture(
+            .onContinuousHover { phase in
+                switch phase {
+                case .active(let loc):
+                    hoverRatio = min(max(loc.x / w, 0), 1)
+                    revealControls()
+                case .ended:
+                    hoverRatio = nil
+                }
+            }
+            .highPriorityGesture(
                 DragGesture(minimumDistance: 0)
                     .onChanged { value in
                         isScrubbing = true
                         let ratio = min(max(value.location.x / w, 0), 1)
-                        scrubTargetSec = ratio * dur
+                        let target = ratio * dur
+                        scrubTargetSec = target
+                        hoverRatio = ratio
+                        let now = Date()
+                        if now.timeIntervalSince(lastLiveScrubDate) >= 0.08 {
+                            lastLiveScrubDate = now
+                            engine.seek(to: target)
+                        }
                         revealControls()
                     }
                     .onEnded { value in
@@ -467,7 +503,7 @@ struct MacPlayerView: View {
                     }
             )
         }
-        .frame(height: 18)
+        .frame(height: 22)
     }
 
     private var episodeDrawerSidebar: some View {

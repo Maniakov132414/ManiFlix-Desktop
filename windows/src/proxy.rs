@@ -4,7 +4,7 @@ use std::time::{Duration, Instant};
 use wry::http::{header, Method, Request, Response, StatusCode};
 
 const REMOTE_BASE: &str = "https://phim.maniakov.bond";
-const DESKTOP_USER_AGENT: &str = "ManiFlixDesktop-Rust/2.0.2";
+const DESKTOP_USER_AGENT: &str = "ManiFlixDesktop-Rust/2.0.3";
 const MAX_CACHE_BYTES: usize = 48 * 1024 * 1024;
 const MAX_ENTRY_BYTES: usize = 8 * 1024 * 1024;
 const MAX_CACHE_ENTRIES: usize = 512;

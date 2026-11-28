@@ -29,11 +29,11 @@ final class UpdateManager: ObservableObject {
     private let versionEndpoint = "https://phim.maniakov.bond/api/desktop/version"
 
     static var currentVersionString: String {
-        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.0.2"
+        (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "2.0.3"
     }
 
     static var currentBuildString: String {
-        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "202"
+        (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "203"
     }
 
     private init() {}

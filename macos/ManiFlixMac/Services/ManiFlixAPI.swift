@@ -159,7 +159,7 @@ final class ManiFlixAPI {
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("ManiFlix-macOS/2.0.2", forHTTPHeaderField: "User-Agent")
+        req.setValue("ManiFlix-macOS/2.0.3", forHTTPHeaderField: "User-Agent")
 
         if let token = token, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")

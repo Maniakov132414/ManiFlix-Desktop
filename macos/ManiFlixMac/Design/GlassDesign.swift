@@ -456,7 +456,7 @@ struct CachedPosterImage: View {
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
             request.timeoutInterval = 15
-            request.setValue("ManiFlix-macOS/2.0.2", forHTTPHeaderField: "User-Agent")
+            request.setValue("ManiFlix-macOS/2.0.3", forHTTPHeaderField: "User-Agent")
             let (data, response) = try await ImageCacheStore.shared.session.data(for: request)
             guard !Task.isCancelled else { return }
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {

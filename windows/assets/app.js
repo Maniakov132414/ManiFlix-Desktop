@@ -1,6 +1,6 @@
 (() => {
-  const APP_VERSION = '2.0.2';
-  const APP_BUILD = 202;
+  const APP_VERSION = '2.0.3';
+  const APP_BUILD = 203;
 
   const THEME_PRESETS = [
     { id: 'crimson_violet', name: 'ManiFlix Mặc Định', mode: 'dark', accent: '#e11d48', bg: '#0b0f19', surface: '#0f172a' },
@@ -1868,11 +1868,15 @@
     let hudTimer = null;
     let flashTimer = null;
     let draggingScrub = false;
+    let wasPlayingBeforeScrub = false;
     let boostVal = 1.0;
     let audioCtx = null;
     let mediaSrc = null;
     let gainNode = null;
     let curSrcIsClean = true;
+    let triedServerIndices = new Set([serverIndex]);
+    let triedFallbackOnCurrentServer = false;
+    let activeStreamToken = 0;
     let activeSubLang = ['vi', 'en', 'off'].includes(state.prefs.defaultSubLang) ? state.prefs.defaultSubLang : 'vi';
     let subDelaySec = 0;
     let useCustomSubOverlay = false;
@@ -2135,10 +2139,11 @@
         btn.onclick = () => {
           const nextSrv = parseInt(btn.dataset.drawerSrv, 10) || 0;
           if (nextSrv === serverIndex) return;
+          saveCurrentProgress(true);
           serverIndex = nextSrv;
           const maxIdx = Math.max(0, (currentSrv().server_data || []).length - 1);
           if (episodeIndex > maxIdx) episodeIndex = maxIdx;
-          loadCurrentEpisode(false);
+          loadCurrentEpisode(false, true);
         };
       });
       epListEl.querySelectorAll('[data-drawer-ep]').forEach(btn => {
@@ -2147,7 +2152,7 @@
           if (nextEp === episodeIndex) return;
           saveCurrentProgress(true);
           episodeIndex = nextEp;
-          loadCurrentEpisode(true);
+          loadCurrentEpisode(true, true);
         };
       });
     }
@@ -2408,9 +2413,78 @@
       wakeHud();
     }
 
+    function findNextAvailableServer(curSrvIdx) {
+      if (!Array.isArray(servers) || servers.length <= 1) return -1;
+      for (let offset = 1; offset < servers.length; offset++) {
+        const idx = (curSrvIdx + offset) % servers.length;
+        if (triedServerIndices.has(idx)) continue;
+        const list = (servers[idx] && servers[idx].server_data) || [];
+        if (list.some(item => item && item.link_m3u8)) return idx;
+      }
+      return -1;
+    }
+
+    function matchEpisodeIndexForServer(targetSrvIdx, refEp, fallbackIdx) {
+      const list = (servers[targetSrvIdx] && servers[targetSrvIdx].server_data) || [];
+      if (!list.length) return 0;
+      if (refEp) {
+        if (refEp.slug) {
+          const bySlug = list.findIndex(item => item && item.slug === refEp.slug && item.link_m3u8);
+          if (bySlug >= 0) return bySlug;
+        }
+        const refName = String(refEp.name || '').trim().toLowerCase();
+        if (refName) {
+          const byName = list.findIndex(item => item && String(item.name || '').trim().toLowerCase() === refName && item.link_m3u8);
+          if (byName >= 0) return byName;
+        }
+        const refDigits = String(refEp.slug || refEp.name || '').replace(/\D+/g, '');
+        if (refDigits) {
+          const byDigits = list.findIndex(item => item && String(item.slug || item.name || '').replace(/\D+/g, '') === refDigits && item.link_m3u8);
+          if (byDigits >= 0) return byDigits;
+        }
+      }
+      const clamped = Math.min(Math.max(0, fallbackIdx || 0), list.length - 1);
+      if (list[clamped] && list[clamped].link_m3u8) return clamped;
+      const firstValid = list.findIndex(item => item && item.link_m3u8);
+      return firstValid >= 0 ? firstValid : 0;
+    }
+
+    function handleStreamFailure(srcUrl, rawUrl, resumeSec) {
+      const hasVirtualHash = rawUrl.includes('#');
+      const fbUrl = hasVirtualHash
+        ? (`/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(activeSubLang)}&ap=1`)
+        : rawUrl;
+      if (!triedFallbackOnCurrentServer && srcUrl !== fbUrl) {
+        triedFallbackOnCurrentServer = true;
+        curSrcIsClean = hasVirtualHash;
+        attachStream(fbUrl, hasVirtualHash ? 'Dự phòng (Relay)' : 'Dự phòng (Trực tiếp)', rawUrl, resumeSec);
+        return;
+      }
+      triedFallbackOnCurrentServer = true;
+
+      const nextSrvIdx = findNextAvailableServer(serverIndex);
+      if (nextSrvIdx >= 0) {
+        const refEp = currentEp();
+        const curPos = (video && Number.isFinite(video.currentTime) && video.currentTime > 3)
+          ? video.currentTime
+          : (resumeSec || 0);
+        triedServerIndices.add(nextSrvIdx);
+        serverIndex = nextSrvIdx;
+        episodeIndex = matchEpisodeIndexForServer(nextSrvIdx, refEp, episodeIndex);
+        triedFallbackOnCurrentServer = false;
+        toast('Đang tự động chuyển sang máy chủ dự phòng...');
+        loadCurrentEpisode(true, false, curPos);
+        return;
+      }
+      toast('Không thể phát luồng từ các máy chủ hiện có');
+    }
+
     function attachStream(srcUrl, label, rawUrl, resumeSec) {
+      const streamToken = ++activeStreamToken;
       document.getElementById('playerSourceLbl').textContent = `Luồng phát: ${label}`;
       if (hls) { hls.destroy(); hls = null; }
+      video.onerror = null;
+      video.onloadedmetadata = null;
       applySubControlsVisibility(false);
       selQuality.innerHTML = '<option value="-1" selected>Auto</option>';
       let soughtResume = false;
@@ -2424,48 +2498,53 @@
       const isHttpOrigin = window.location.protocol === 'http:' || window.location.protocol === 'https:';
 
       if (window.Hls && window.Hls.isSupported()) {
-        hls = new window.Hls({
+        const localHls = new window.Hls({
           enableWorker: isHttpOrigin,
           startFragPrefetch: true,
           subtitleDisplay: true,
           maxBufferLength: 45,
           backBufferLength: 60
         });
-        hls.loadSource(srcUrl);
-        hls.attachMedia(video);
-        hls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+        hls = localHls;
+        localHls.loadSource(srcUrl);
+        localHls.attachMedia(video);
+        localHls.on(window.Hls.Events.MANIFEST_PARSED, () => {
+          if (streamToken !== activeStreamToken) return;
           populateQualitySelector();
           video.playbackRate = parseFloat(selSpeed.value) || 1;
           video.play().catch(() => {});
           tryResume();
           syncSubtitleState();
         });
-        hls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+        localHls.on(window.Hls.Events.SUBTITLE_TRACKS_UPDATED, () => {
+          if (streamToken !== activeStreamToken) return;
           syncSubtitleState();
         });
         if (window.Hls.Events.SUBTITLE_FRAG_PROCESSED) {
-          hls.on(window.Hls.Events.SUBTITLE_FRAG_PROCESSED, () => {
+          localHls.on(window.Hls.Events.SUBTITLE_FRAG_PROCESSED, () => {
+            if (streamToken !== activeStreamToken) return;
             syncSubtitleState();
           });
         }
-        hls.on(window.Hls.Events.ERROR, (_, data) => {
+        localHls.on(window.Hls.Events.ERROR, (_, data) => {
+          if (streamToken !== activeStreamToken) return;
           if (data.fatal) {
-            const hasVirtualHash = rawUrl.includes('#');
-            const fbUrl = hasVirtualHash ? (`/api/clean-m3u8?url=${encodeURIComponent(rawUrl)}&sub=${encodeURIComponent(activeSubLang)}&ap=1`) : rawUrl;
-            if (srcUrl !== fbUrl) {
-              curSrcIsClean = hasVirtualHash;
-              attachStream(fbUrl, hasVirtualHash ? 'Dự phòng (Relay)' : 'Dự phòng (Trực tiếp)', rawUrl, resumeSec);
-            }
+            handleStreamFailure(srcUrl, rawUrl, resumeSec);
           }
         });
       } else {
         video.src = srcUrl;
         video.onloadedmetadata = () => {
+          if (streamToken !== activeStreamToken) return;
           video.playbackRate = parseFloat(selSpeed.value) || 1;
           tryResume();
           renderScrubberMarkers();
           syncSubtitleState();
           video.play().catch(() => {});
+        };
+        video.onerror = () => {
+          if (streamToken !== activeStreamToken) return;
+          handleStreamFailure(srcUrl, rawUrl, resumeSec);
         };
       }
 
@@ -2501,7 +2580,14 @@
       }
     }
 
-    function loadCurrentEpisode(useSavedResume) {
+    function loadCurrentEpisode(useSavedResume, resetFailover = true, overrideResumeSec = null) {
+      if (resetFailover) {
+        triedServerIndices = new Set([serverIndex]);
+      } else {
+        triedServerIndices.add(serverIndex);
+      }
+      triedFallbackOnCurrentServer = false;
+
       const srv = currentSrv();
       const ep = currentEp();
       if (!ep || !ep.link_m3u8) { toast('Tập này chưa có luồng HLS'); return; }
@@ -2519,7 +2605,9 @@
       document.getElementById('btnNextEp').disabled = episodeIndex + 1 >= srv.server_data.length;
 
       let resumeSec = 0;
-      if (useSavedResume) {
+      if (typeof overrideResumeSec === 'number' && Number.isFinite(overrideResumeSec) && overrideResumeSec > 3) {
+        resumeSec = overrideResumeSec;
+      } else if (useSavedResume) {
         const epRec = state.epProgress[movie.slug]?.[String(episodeIndex)];
         const hist = state.history.find(h => h.slug === movie.slug && h.episodeIndex === episodeIndex);
         if (epRec && epRec.t > 5 && (!epRec.d || epRec.t < epRec.d - 15)) resumeSec = epRec.t;
@@ -2540,7 +2628,7 @@
         })
         .catch(() => {});
 
-      if (drawerOpen) renderDrawer();
+      renderDrawer();
       wakeHud();
     }
 
@@ -2604,11 +2692,23 @@
       showFlash('forward', 'Đã bỏ qua');
     }
 
+    let onWindowPointerMove = null;
+    let onWindowPointerUp = null;
+
     function closePlayer() {
+      activeStreamToken++;
       saveCurrentProgress(true);
       clearTimeout(hudTimer);
       clearTimeout(flashTimer);
+      if (scrubDwellTimer) { clearTimeout(scrubDwellTimer); scrubDwellTimer = null; }
+      if (onWindowPointerMove) window.removeEventListener('pointermove', onWindowPointerMove);
+      if (onWindowPointerUp) {
+        window.removeEventListener('pointerup', onWindowPointerUp);
+        window.removeEventListener('pointercancel', onWindowPointerUp);
+      }
       if (hls) { hls.destroy(); hls = null; }
+      video.onerror = null;
+      video.onloadedmetadata = null;
       video.pause();
       if (document.pictureInPictureElement === video) {
         document.exitPictureInPicture().catch(() => {});
@@ -2621,6 +2721,13 @@
 
     // Event wiring
     overlay.addEventListener('mousemove', wakeHud);
+    const topbarEl = document.getElementById('playerTopbar');
+    const bottomHudEl = document.getElementById('playerBottomHud');
+    [topbarEl, bottomHudEl].forEach(el => {
+      if (!el) return;
+      el.addEventListener('click', (e) => e.stopPropagation());
+      el.addEventListener('dblclick', (e) => e.stopPropagation());
+    });
     stage.addEventListener('click', () => {
       if (drawerOpen) { setDrawer(false); return; }
       togglePlay();
@@ -2721,18 +2828,18 @@
       renderDrawer();
     };
 
-    // Scrubber drag & click (30fps live frame scrub when buffered; dwell/commit when unbuffered to prevent HLS XHR thrashing)
-    const seekFromPointer = (clientX, commitFinal = false) => {
+    // Scrubber drag & click (60fps UI scrub; ~33ms live seek when buffered, 150ms dwell when unbuffered)
+    const seekFromPointer = (clientX, mode = 'move') => {
       const rect = scrubWrap.getBoundingClientRect();
       const ratio = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
       const dur = video.duration || 0;
-      const target = ratio * dur;
+      const target = dur > 0 ? ratio * dur : 0;
       scrubTip.style.left = `${ratio * 100}%`;
       scrubTip.textContent = formatTime(target);
       if (!draggingScrub || dur <= 0) return;
       scrubTargetSec = target;
       syncScrubberUi();
-      if (commitFinal) {
+      if (mode === 'commit') {
         if (scrubDwellTimer) { clearTimeout(scrubDwellTimer); scrubDwellTimer = null; }
         scrubCommitLockUntil = Date.now() + 1200;
         if (!isTimeBuffered(target) && hls) {
@@ -2742,10 +2849,20 @@
         evaluatePlaybackMarkers(true);
         return;
       }
+      if (mode === 'down') {
+        if (scrubDwellTimer) { clearTimeout(scrubDwellTimer); scrubDwellTimer = null; }
+        lastLiveScrubAt = Date.now();
+        scrubCommitLockUntil = Date.now() + 800;
+        if (!isTimeBuffered(target) && hls) {
+          try { hls.startLoad(target); } catch {}
+        }
+        video.currentTime = target;
+        return;
+      }
       if (isTimeBuffered(target)) {
         if (scrubDwellTimer) { clearTimeout(scrubDwellTimer); scrubDwellTimer = null; }
         const now = Date.now();
-        if ((!video.seeking || now - lastLiveScrubAt >= 260) && now - lastLiveScrubAt >= 32) {
+        if ((!video.seeking || now - lastLiveScrubAt >= 260) && now - lastLiveScrubAt >= 33) {
           lastLiveScrubAt = now;
           video.currentTime = target;
         }
@@ -2756,37 +2873,65 @@
           if (!draggingScrub) return;
           if (hls) { try { hls.startLoad(scrubTargetSec); } catch {} }
           video.currentTime = scrubTargetSec;
-        }, 220);
+        }, 150);
       }
     };
     scrubWrap.addEventListener('click', (e) => {
-      if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) {
+      e.stopPropagation();
+      if (e.detail === 0 && e.clientX === 0 && e.clientY === 0) {
         e.preventDefault();
-        e.stopPropagation();
+        togglePlay();
       }
     });
+    scrubWrap.addEventListener('dblclick', (e) => {
+      e.stopPropagation();
+    });
     scrubWrap.addEventListener('pointerdown', (e) => {
-      if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
+      wasPlayingBeforeScrub = !video.paused;
       draggingScrub = true;
       scrubWrap.classList.add('dragging');
       try { scrubWrap.setPointerCapture(e.pointerId); } catch {}
-      seekFromPointer(e.clientX, false);
+      seekFromPointer(e.clientX, 'down');
       wakeHud();
     });
-    scrubWrap.addEventListener('pointermove', (e) => seekFromPointer(e.clientX, false));
+    scrubWrap.addEventListener('pointermove', (e) => {
+      if (!draggingScrub) seekFromPointer(e.clientX, 'move');
+    });
     const endScrub = (e) => {
       if (!draggingScrub) return;
-      seekFromPointer(e.clientX, true);
+      e.preventDefault();
+      e.stopPropagation();
+      seekFromPointer(e.clientX, 'commit');
       draggingScrub = false;
       scrubWrap.classList.remove('dragging');
+      try {
+        if (e.pointerId !== undefined && scrubWrap.hasPointerCapture && scrubWrap.hasPointerCapture(e.pointerId)) {
+          scrubWrap.releasePointerCapture(e.pointerId);
+        }
+      } catch {}
       syncScrubberUi();
+      if (wasPlayingBeforeScrub && video.paused) {
+        video.play().catch(() => {});
+      }
+      wasPlayingBeforeScrub = false;
       wakeHud();
+    };
+    onWindowPointerMove = (e) => {
+      if (!draggingScrub) return;
+      seekFromPointer(e.clientX, 'move');
+    };
+    onWindowPointerUp = (e) => {
+      if (!draggingScrub) return;
+      endScrub(e);
     };
     scrubWrap.addEventListener('pointerup', endScrub);
     scrubWrap.addEventListener('pointercancel', endScrub);
+    window.addEventListener('pointermove', onWindowPointerMove);
+    window.addEventListener('pointerup', onWindowPointerUp);
+    window.addEventListener('pointercancel', onWindowPointerUp);
 
     function evaluatePlaybackMarkers(isFromSeek = false) {
       const t = video.currentTime || 0;

@@ -109,6 +109,7 @@ final class MacPlayerEngine: ObservableObject {
     private var dismissedIds = Set<String>()
     private var usingCleanSource = true
     private var didFailover = false
+    private var triedServerIndices: Set<Int> = []
     private var lastSavedSec: Double = -999
     private var pendingResumeSec: Double
 
@@ -155,7 +156,7 @@ final class MacPlayerEngine: ObservableObject {
         return "Đầu ra macOS"
     }
 
-    func loadCurrentEpisode() {
+    func loadCurrentEpisode(resetFailover: Bool = true) {
         cleanupObservers()
         isFailed = false
         errorMessage = ""
@@ -165,6 +166,11 @@ final class MacPlayerEngine: ObservableObject {
         skippedIds.removeAll()
         dismissedIds.removeAll()
         didFailover = false
+        if resetFailover {
+            triedServerIndices = [serverIndex]
+        } else {
+            triedServerIndices.insert(serverIndex)
+        }
         availableSubtitles = []
         subtitleOptionsMap = [:]
         selectedSubtitleId = "off"
@@ -202,7 +208,7 @@ final class MacPlayerEngine: ObservableObject {
         }
 
         let asset = AVURLAsset(url: url, options: [
-            "AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": "ManiFlix-macOS/1.0"]
+            "AVURLAssetHTTPHeaderFieldsKey": ["User-Agent": "ManiFlix-macOS/2.0.3"]
         ])
         let item = AVPlayerItem(asset: asset)
         applySpatialAndBuffer(to: item)
@@ -216,7 +222,7 @@ final class MacPlayerEngine: ObservableObject {
         stallTimer = Task { [weak self] in
             try? await Task.sleep(nanoseconds: 18_000_000_000)
             guard !Task.isCancelled, let self = self else { return }
-            if self.isBuffering && self.currentTime < 0.5 && !self.didFailover {
+            if self.isBuffering && self.currentTime < 0.5 {
                 self.tryFailover(for: ep, reason: "Đang chuyển sang nguồn dự phòng...")
             }
         }
@@ -235,14 +241,62 @@ final class MacPlayerEngine: ObservableObject {
         player.isMuted = isMuted
     }
 
-    private func tryFailover(for ep: EpisodeItem, reason: String) {
-        guard !didFailover else {
-            isFailed = true; isBuffering = false; errorMessage = reason; return
+    private func nextUntriedServerIndex() -> Int? {
+        guard !servers.isEmpty else { return nil }
+        for offset in 1..<servers.count {
+            let idx = (serverIndex + offset) % servers.count
+            if !triedServerIndices.contains(idx),
+               servers[idx].server_data.contains(where: { !($0.link_m3u8?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ?? true) }) {
+                return idx
+            }
         }
-        didFailover = true
-        usingCleanSource.toggle()
-        showToast(usingCleanSource ? "Đổi sang nguồn lọc quảng cáo" : "Đổi sang nguồn gốc")
-        startStream(for: ep, useClean: usingCleanSource)
+        return nil
+    }
+
+    private func tryFailover(for ep: EpisodeItem, reason: String) {
+        let raw = ep.link_m3u8?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        if !didFailover && !raw.contains("/api/") {
+            didFailover = true
+            usingCleanSource.toggle()
+            showToast(usingCleanSource ? "Đổi sang nguồn lọc quảng cáo" : "Đổi sang nguồn gốc")
+            startStream(for: ep, useClean: usingCleanSource)
+            return
+        }
+
+        if let nextSrvIdx = nextUntriedServerIndex() {
+            triedServerIndices.insert(nextSrvIdx)
+            let curEpSlug = ep.slug
+            let curEpName = ep.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let nextList = servers[nextSrvIdx].server_data
+            let matchedEpIdx: Int = {
+                if !curEpSlug.isEmpty,
+                   let idx = nextList.firstIndex(where: { $0.slug == curEpSlug && !($0.link_m3u8?.isEmpty ?? true) }) {
+                    return idx
+                }
+                if !curEpName.isEmpty,
+                   let idx = nextList.firstIndex(where: { $0.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == curEpName && !($0.link_m3u8?.isEmpty ?? true) }) {
+                    return idx
+                }
+                let clamped = min(episodeIndex, max(0, nextList.count - 1))
+                if !(nextList[safe: clamped]?.link_m3u8?.isEmpty ?? true) {
+                    return clamped
+                }
+                return nextList.firstIndex(where: { !($0.link_m3u8?.isEmpty ?? true) }) ?? clamped
+            }()
+
+            if currentTime > 3 {
+                pendingResumeSec = currentTime
+            }
+            serverIndex = nextSrvIdx
+            episodeIndex = matchedEpIdx
+            showToast("Đang chuyển sang \(servers[nextSrvIdx].server_name)...")
+            loadCurrentEpisode(resetFailover: false)
+            return
+        }
+
+        isFailed = true
+        isBuffering = false
+        errorMessage = reason
     }
 
     private func attachObservers(to item: AVPlayerItem) {

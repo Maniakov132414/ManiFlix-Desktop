@@ -308,7 +308,7 @@ fn handle_custom_protocol(
                 "arch": std::env::consts::ARCH,
                 "pkgFormat": detect_pkg_format(),
                 "version": env!("CARGO_PKG_VERSION"),
-                "build": 202u32,
+                "build": 203u32,
             });
             let body = serde_json::to_vec(&payload).unwrap_or_else(|_| b"{}".to_vec());
             json_response(StatusCode::OK, body)
