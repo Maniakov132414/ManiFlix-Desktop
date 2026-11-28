@@ -55,6 +55,69 @@ struct MoviesPageResponse: Codable {
     let items: [MovieItem]?
 }
 
+struct FlexibleMovieList: Codable {
+    let items: [MovieItem]
+
+    init(from decoder: Decoder) throws {
+        if let arr = try? decoder.singleValueContainer().decode([MovieItem].self) {
+            self.items = arr
+            return
+        }
+        struct Wrapper: Codable { let items: [MovieItem]? }
+        if let wrapped = try? Wrapper(from: decoder) {
+            self.items = wrapped.items ?? []
+            return
+        }
+        self.items = []
+    }
+}
+
+struct BootstrapDiscoverResponse: Codable {
+    let ok: Bool?
+    let status: Bool?
+    let latest: FlexibleMovieList?
+    let movies: FlexibleMovieList?
+    let heroMovies: FlexibleMovieList?
+    let phimMoi: FlexibleMovieList?
+    let series: FlexibleMovieList?
+    let seriesMovies: FlexibleMovieList?
+    let phimBo: FlexibleMovieList?
+    let single: FlexibleMovieList?
+    let singleMovies: FlexibleMovieList?
+    let phimLe: FlexibleMovieList?
+    let anime: FlexibleMovieList?
+    let animeMovies: FlexibleMovieList?
+    let hoatHinh: FlexibleMovieList?
+
+    var resolvedLatest: [MovieItem] {
+        for cand in [latest?.items, movies?.items, heroMovies?.items, phimMoi?.items] {
+            if let list = cand, !list.isEmpty { return list }
+        }
+        return []
+    }
+
+    var resolvedSeries: [MovieItem] {
+        for cand in [series?.items, seriesMovies?.items, phimBo?.items] {
+            if let list = cand, !list.isEmpty { return list }
+        }
+        return []
+    }
+
+    var resolvedSingle: [MovieItem] {
+        for cand in [single?.items, singleMovies?.items, phimLe?.items] {
+            if let list = cand, !list.isEmpty { return list }
+        }
+        return []
+    }
+
+    var resolvedAnime: [MovieItem] {
+        for cand in [anime?.items, animeMovies?.items, hoatHinh?.items] {
+            if let list = cand, !list.isEmpty { return list }
+        }
+        return []
+    }
+}
+
 struct CategoryPageResponse: Codable {
     let status: Bool?
     let titlePage: String?

@@ -204,7 +204,7 @@ jobs:
           INSTALLED_KB=$(du -sk "$DEB_ROOT/usr" | awk '{print $1}')
           cat << EOF > "$DEB_ROOT/DEBIAN/control"
           Package: maniflix
-          Version: 2.0.1
+          Version: 2.0.2
           Section: video
           Priority: optional
           Architecture: amd64
@@ -270,7 +270,7 @@ jobs:
           retention-days: 30
 
   release:
-    name: Publish GitHub Release v2.0.1
+    name: Publish GitHub Release v2.0.2
     needs: [ build-windows, build-macos, build-linux ]
     runs-on: ubuntu-latest
     steps:
@@ -288,17 +288,16 @@ jobs:
           test -s release-assets/ManiFlix-Linux-x86_64.AppImage
           test -s release-assets/ManiFlix-Linux-amd64.deb
 
-      - name: Publish Release v2.0.1
+      - name: Publish Release v2.0.2
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v2.0.1
-          name: ManiFlix Desktop v2.0.1
+          tag_name: v2.0.2
+          name: ManiFlix Desktop v2.0.2
           body: |
-            ## ManiFlix Desktop v2.0.1 (Build 201 — Windows, macOS, Linux & Steam Deck)
-            - **Hỗ trợ chính thức Linux & Steam Deck (Native Rust + WebKitGTK)**: Bổ sung bản chạy ngay `ManiFlix-Linux-x86_64.AppImage` (mọi bản phân phối Linux & SteamOS) và gói cài đặt `ManiFlix-Linux-amd64.deb` (Ubuntu / Debian / Linux Mint), tương thích mượt mà với Wayland, X11 và Gamescope.
-            - **Điều khiển Tay cầm 60fps (Steam Deck / Xbox / DualSense)**: Điều hướng giao diện thông minh bằng D-Pad & cần gạt, phím tắt tua nhanh, đổi tập, chuyển phụ đề trực tiếp và tự động toàn màn hình trên Steam Deck Gaming Mode.
-            - **Biểu tượng & Giao diện ManiFlix 3D Liquid Glass 2.0.1**: Đồng bộ logo M-Play kính nổi 3D trong suốt trên Windows, macOS, Linux và Steam Deck, cùng kho Phim Mới 2026 & Đề Xuất thông minh.
-            - **Luồng phát sạch & đa phụ đề**: Khởi phát siêu tốc không quảng cáo, chọn phụ đề trực tiếp (Tiếng Việt / English / Tắt), căn chỉnh lệch phụ đề và đồng bộ 6 chủ đề giao diện.
+            ## ManiFlix Desktop v2.0.2 (Build 202 — Windows, macOS, Linux & Steam Deck)
+            - **Thông báo cập nhật ngay trong ứng dụng (2 cấp Soft / Force)**: Tự động kiểm tra bản mới, nhận diện định dạng phù hợp (`.exe`, `.dmg`, `.AppImage`, `.deb`), hỗ trợ nhắc lại sau 24 giờ cho bản cập nhật thường và hướng dẫn cài đặt nhanh `.deb`.
+            - **Tăng tốc hiệu năng ≥2X trên Desktop & macOS**: Bổ sung bộ nhớ đệm RAM cục bộ trong Rust proxy (kèm nén HTTP gzip & giữ Cache-Control chuẩn), nạp nhanh Trang chủ qua bootstrap, tải trước chi tiết phim khi rê chuột/tay cầm và bộ nhớ đệm API + poster `NSCache` trên macOS.
+            - **Cải thiện trình phát & điều khiển**: Khắc phục lỗi tua về 0 giây khi nhấn `Enter` trên trình phát Desktop, giữ phím `Enter` để Phát/Tạm dừng ổn định cùng điều hướng tay cầm 60fps.
             - **Bản cài đặt**: `ManiFlix.exe` (Windows), `ManiFlix-macOS.dmg` (macOS), `ManiFlix-Linux-x86_64.AppImage` (Linux Universal & Steam Deck), `ManiFlix-Linux-amd64.deb` (Ubuntu / Debian).
           files: |
             release-assets/ManiFlix.exe

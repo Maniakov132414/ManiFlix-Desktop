@@ -164,6 +164,108 @@ fn parse_query_param(query: &str, key: &str) -> Option<String> {
     None
 }
 
+fn percent_decode(input: &str) -> String {
+    let bytes = input.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' && i + 2 < bytes.len() {
+            if let Ok(hex_str) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
+                if let Ok(val) = u8::from_str_radix(hex_str, 16) {
+                    out.push(val);
+                    i += 3;
+                    continue;
+                }
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
+}
+
+fn detect_pkg_format() -> &'static str {
+    #[cfg(target_os = "linux")]
+    {
+        if std::env::var_os("APPIMAGE")
+            .map(|v| !v.is_empty())
+            .unwrap_or(false)
+        {
+            return "appimage";
+        }
+        if std::path::Path::new("/usr/lib/maniflix").exists()
+            || std::path::Path::new("/var/lib/dpkg/info/maniflix.list").exists()
+        {
+            return "deb";
+        }
+        "binary"
+    }
+    #[cfg(windows)]
+    {
+        "exe"
+    }
+    #[cfg(target_os = "macos")]
+    {
+        "dmg"
+    }
+    #[cfg(not(any(target_os = "linux", windows, target_os = "macos")))]
+    {
+        "binary"
+    }
+}
+
+fn is_allowlisted_external_url(url: &str) -> bool {
+    if url.len() > 1024 {
+        return false;
+    }
+    let allowed_prefix = url.starts_with("https://github.com/Maniakov132414/")
+        || url.starts_with("https://phim.maniakov.bond/");
+    if !allowed_prefix {
+        return false;
+    }
+    !url.chars().any(|c| {
+        c.is_control()
+            || c.is_whitespace()
+            || matches!(
+                c,
+                '"' | '\'' | '`' | '<' | '>' | '|' | '&' | ';' | '$' | '(' | ')' | '\\'
+            )
+    })
+}
+
+fn launch_external_url(url: &str) -> Result<(), String> {
+    #[cfg(windows)]
+    {
+        std::process::Command::new("rundll32")
+            .arg("url.dll,FileProtocolHandler")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "linux")]
+    {
+        std::process::Command::new("xdg-open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|e| e.to_string())
+    }
+    #[cfg(not(any(windows, target_os = "linux", target_os = "macos")))]
+    {
+        let _ = url;
+        Err("Unsupported OS".to_string())
+    }
+}
+
 fn handle_custom_protocol(
     req: &Request<Vec<u8>>,
     shared_win: &Arc<Mutex<WindowTelemetry>>,
@@ -198,6 +300,35 @@ fn handle_custom_protocol(
         "/assets/app.js" => static_asset("application/javascript; charset=utf-8", APP_JS.as_bytes()),
         "/assets/hls.min.js" => {
             static_asset("application/javascript; charset=utf-8", HLS_JS.as_bytes())
+        }
+        "/__desktop/appinfo" => {
+            let payload = serde_json::json!({
+                "ok": true,
+                "os": std::env::consts::OS,
+                "arch": std::env::consts::ARCH,
+                "pkgFormat": detect_pkg_format(),
+                "version": env!("CARGO_PKG_VERSION"),
+                "build": 202u32,
+            });
+            let body = serde_json::to_vec(&payload).unwrap_or_else(|_| b"{}".to_vec());
+            json_response(StatusCode::OK, body)
+        }
+        "/__desktop/open-url" => {
+            let raw_url = parse_query_param(query, "url").unwrap_or_default();
+            let decoded = percent_decode(&raw_url).trim().to_string();
+            if !is_allowlisted_external_url(&decoded) {
+                return json_response(
+                    StatusCode::BAD_REQUEST,
+                    br#"{"ok":false,"error":"URL not allowlisted"}"#.to_vec(),
+                );
+            }
+            match launch_external_url(&decoded) {
+                Ok(()) => json_response(StatusCode::OK, br#"{"ok":true}"#.to_vec()),
+                Err(_) => json_response(
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    br#"{"ok":false,"error":"Failed to open URL"}"#.to_vec(),
+                ),
+            }
         }
         "/__desktop/sysinfo" => {
             let win_snap = shared_win.lock().map(|g| g.clone()).unwrap_or_default();

@@ -82,7 +82,7 @@ struct MovieDetailView: View {
 
     private var headerBanner: some View {
         VStack(spacing: 12) {
-            CachedAsyncImage(url: heroArtworkURL, maxPixelSize: 480)
+            CachedPosterImage(url: heroArtworkURL, maxPixelSize: 480)
                 .frame(width: 164, height: 236)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                 .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(ManiFlixTheme.cardStroke(colorScheme), lineWidth: 0.6))

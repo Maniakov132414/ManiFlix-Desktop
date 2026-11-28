@@ -272,7 +272,7 @@ struct AmbientArtworkBackground: View {
             let bg = ManiFlixTheme.background(scheme: colorScheme)
             let accent = prefs.currentAccentColor
             ZStack(alignment: .top) {
-                CachedAsyncImage(url: artworkURL, maxPixelSize: 64)
+                CachedPosterImage(url: artworkURL, maxPixelSize: 64)
                     .frame(maxWidth: .infinity)
                     .frame(height: height)
                     .blur(radius: 18)
@@ -360,14 +360,14 @@ final class ImageCacheStore: @unchecked Sendable {
         cache.totalCostLimit = 96 * 1024 * 1024
 
         let urlCache = URLCache(
-            memoryCapacity: 16 * 1024 * 1024,
-            diskCapacity: 64 * 1024 * 1024,
+            memoryCapacity: 32 * 1024 * 1024,
+            diskCapacity: 128 * 1024 * 1024,
             diskPath: "ManiFlixImageCache"
         )
         let cfg = URLSessionConfiguration.default
         cfg.urlCache = urlCache
         cfg.requestCachePolicy = .returnCacheDataElseLoad
-        cfg.httpMaximumConnectionsPerHost = 8
+        cfg.httpMaximumConnectionsPerHost = 12
         cfg.timeoutIntervalForRequest = 15
         self.session = URLSession(configuration: cfg)
     }
@@ -403,7 +403,7 @@ final class ImageCacheStore: @unchecked Sendable {
     }
 }
 
-struct CachedAsyncImage: View {
+struct CachedPosterImage: View {
     let url: URL?
     var contentMode: ContentMode = .fill
     var maxPixelSize: Int = 380
@@ -456,7 +456,7 @@ struct CachedAsyncImage: View {
             var request = URLRequest(url: url)
             request.cachePolicy = .returnCacheDataElseLoad
             request.timeoutInterval = 15
-            request.setValue("ManiFlix-macOS/1.1", forHTTPHeaderField: "User-Agent")
+            request.setValue("ManiFlix-macOS/2.0.2", forHTTPHeaderField: "User-Agent")
             let (data, response) = try await ImageCacheStore.shared.session.data(for: request)
             guard !Task.isCancelled else { return }
             if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -477,3 +477,5 @@ struct CachedAsyncImage: View {
         }
     }
 }
+
+typealias CachedAsyncImage = CachedPosterImage

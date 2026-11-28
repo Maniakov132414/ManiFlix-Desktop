@@ -39,7 +39,7 @@ struct MoviePosterCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             ZStack(alignment: .bottomLeading) {
-                CachedAsyncImage(url: movie.displayPosterURL, maxPixelSize: 380)
+                CachedPosterImage(url: movie.displayPosterURL, maxPixelSize: 380)
                     .frame(maxWidth: .infinity)
                     .aspectRatio(2.0 / 3.0, contentMode: .fill)
                     .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -241,7 +241,7 @@ struct DiscoverView: View {
     private func heroCard(for movie: MovieItem) -> some View {
         let h: CGFloat = isCompactPhone ? 280 : 340
         return ZStack(alignment: .bottomLeading) {
-            CachedAsyncImage(url: movie.displayThumbURL ?? movie.displayPosterURL, maxPixelSize: 1080)
+            CachedPosterImage(url: movie.displayThumbURL ?? movie.displayPosterURL, maxPixelSize: 1080)
                 .frame(maxWidth: .infinity).frame(height: h)
                 .overlay(
                     LinearGradient(
@@ -368,7 +368,7 @@ struct DiscoverView: View {
                         NavigationLink(destination: MovieDetailView(slug: entry.slug, seedMovie: nil)) {
                             VStack(alignment: .leading, spacing: 6) {
                                 ZStack(alignment: .bottomLeading) {
-                                    CachedAsyncImage(url: entry.displayPosterURL)
+                                    CachedPosterImage(url: entry.displayPosterURL)
                                         .frame(width: 176, height: 104)
                                         .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
                                     ProgressView(value: entry.progressRatio)
@@ -472,17 +472,27 @@ struct DiscoverView: View {
         latestPage = 1
         hasMoreLatest = true
         do {
-            async let latestTask = ManiFlixAPI.shared.fetchMovies(page: 1)
-            async let seriesTask = ManiFlixAPI.shared.fetchCategory(type: "phim-bo", page: 1)
-            async let singleTask = ManiFlixAPI.shared.fetchCategory(type: "phim-le", page: 1)
-            async let animeTask = ManiFlixAPI.shared.fetchCategory(type: "hoat-hinh", page: 1)
-            let latest = try await latestTask
-            let items = latest.items ?? []
-            self.heroMovies = items
-            self.hasMoreLatest = !items.isEmpty
-            self.seriesMovies = (try? await seriesTask)?.items ?? []
-            self.singleMovies = (try? await singleTask)?.items ?? []
-            self.animeMovies = (try? await animeTask)?.items ?? []
+            if let boot = try? await ManiFlixAPI.shared.fetchBootstrapDiscover(),
+               !boot.resolvedLatest.isEmpty {
+                let items = boot.resolvedLatest
+                self.heroMovies = items
+                self.hasMoreLatest = !items.isEmpty
+                self.seriesMovies = boot.resolvedSeries
+                self.singleMovies = boot.resolvedSingle
+                self.animeMovies = boot.resolvedAnime
+            } else {
+                async let latestTask = ManiFlixAPI.shared.fetchMovies(page: 1)
+                async let seriesTask = ManiFlixAPI.shared.fetchCategory(type: "phim-bo", page: 1)
+                async let singleTask = ManiFlixAPI.shared.fetchCategory(type: "phim-le", page: 1)
+                async let animeTask = ManiFlixAPI.shared.fetchCategory(type: "hoat-hinh", page: 1)
+                let latest = try await latestTask
+                let items = latest.items ?? []
+                self.heroMovies = items
+                self.hasMoreLatest = !items.isEmpty
+                self.seriesMovies = (try? await seriesTask)?.items ?? []
+                self.singleMovies = (try? await singleTask)?.items ?? []
+                self.animeMovies = (try? await animeTask)?.items ?? []
+            }
         } catch {
             self.errorMsg = error.localizedDescription
         }

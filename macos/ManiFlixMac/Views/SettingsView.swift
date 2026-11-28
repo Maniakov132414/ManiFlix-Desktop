@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsView: View {
     @ObservedObject private var prefs = AppPreferences.shared
     @ObservedObject private var appState = AppState.shared
+    @ObservedObject private var updateManager = UpdateManager.shared
     @Environment(\.colorScheme) private var colorScheme
 
     var body: some View {
@@ -87,8 +88,31 @@ struct SettingsView: View {
                 HStack {
                     Text("Phiên bản")
                     Spacer()
-                    Text("1.2.0 (5)").font(.caption).foregroundColor(.secondary)
+                    Text("\(UpdateManager.currentVersionString) (\(UpdateManager.currentBuildString))")
+                        .font(.caption).foregroundColor(.secondary)
                 }
+                Button {
+                    Task { await updateManager.checkForUpdates(manual: true) }
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Kiểm tra cập nhật")
+                            if !updateManager.statusMessage.isEmpty {
+                                Text(updateManager.statusMessage)
+                                    .font(.caption2)
+                                    .foregroundColor(.secondary)
+                            }
+                        }
+                        Spacer()
+                        if updateManager.isChecking {
+                            ProgressView().scaleEffect(0.7)
+                        } else {
+                            Image(systemName: "arrow.triangle.2.circlepath")
+                                .foregroundColor(prefs.currentAccentColor)
+                        }
+                    }
+                }
+                .disabled(updateManager.isChecking)
                 Button("Đặt lại mặc định", role: .destructive) { prefs.resetToDefaults() }
             }
         }

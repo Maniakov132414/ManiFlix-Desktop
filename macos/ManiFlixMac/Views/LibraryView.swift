@@ -53,7 +53,7 @@ struct LibraryView: View {
                             HStack(spacing: 12) {
                                 NavigationLink(destination: MovieDetailView(slug: entry.slug, seedMovie: nil)) {
                                     HStack(spacing: 12) {
-                                        CachedAsyncImage(url: entry.displayPosterURL)
+                                        CachedPosterImage(url: entry.displayPosterURL)
                                             .frame(width: 104, height: 62)
                                             .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                         VStack(alignment: .leading, spacing: 4) {
@@ -119,7 +119,7 @@ struct LibraryView: View {
                     LazyVStack(spacing: 10) {
                         ForEach(appState.blockedMovies) { item in
                             HStack(spacing: 12) {
-                                CachedAsyncImage(url: ImageURLResolver.resolve(item.poster))
+                                CachedPosterImage(url: ImageURLResolver.resolve(item.poster))
                                     .frame(width: 52, height: 74)
                                     .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
                                 VStack(alignment: .leading, spacing: 3) {

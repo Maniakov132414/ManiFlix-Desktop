@@ -27,15 +27,73 @@ struct SpeedtestTransferResult: Sendable {
     let source: String
 }
 
+actor APIMemoryCache {
+    private struct Entry {
+        let data: Data
+        let expiresAt: Date
+    }
+
+    private var entries: [String: Entry] = [:]
+    private var order: [String] = []
+    private var totalBytes = 0
+    private let maxEntries = 120
+    private let maxBytes = 24 * 1024 * 1024
+
+    func get(key: String) -> Data? {
+        guard let entry = entries[key] else { return nil }
+        if Date() < entry.expiresAt {
+            return entry.data
+        }
+        totalBytes = max(0, totalBytes - entry.data.count)
+        entries.removeValue(forKey: key)
+        order.removeAll { $0 == key }
+        return nil
+    }
+
+    func set(key: String, data: Data, ttl: TimeInterval) {
+        guard data.count <= 4 * 1024 * 1024 else { return }
+        if let prev = entries.removeValue(forKey: key) {
+            totalBytes = max(0, totalBytes - prev.data.count)
+            order.removeAll { $0 == key }
+        }
+        let now = Date()
+        let expiredKeys = entries.compactMap { k, v in now >= v.expiresAt ? k : nil }
+        for k in expiredKeys {
+            if let rem = entries.removeValue(forKey: k) {
+                totalBytes = max(0, totalBytes - rem.data.count)
+            }
+            order.removeAll { $0 == k }
+        }
+        while (totalBytes + data.count > maxBytes || entries.count >= maxEntries), !order.isEmpty {
+            let oldKey = order.removeFirst()
+            if let rem = entries.removeValue(forKey: oldKey) {
+                totalBytes = max(0, totalBytes - rem.data.count)
+            }
+        }
+        entries[key] = Entry(data: data, expiresAt: now.addingTimeInterval(ttl))
+        order.append(key)
+        totalBytes += data.count
+    }
+}
+
 final class ManiFlixAPI {
     static let shared = ManiFlixAPI()
     private let session: URLSession
     private let speedSession: URLSession
     private let decoder = JSONDecoder()
+    private let memoryCache = APIMemoryCache()
     private let baseURL = "https://phim.maniakov.bond"
 
     private init() {
+        let urlCache = URLCache(
+            memoryCapacity: 64 * 1024 * 1024,
+            diskCapacity: 256 * 1024 * 1024,
+            diskPath: "ManiFlixAPICache"
+        )
         let config = URLSessionConfiguration.default
+        config.urlCache = urlCache
+        config.requestCachePolicy = .useProtocolCachePolicy
+        config.httpMaximumConnectionsPerHost = 12
         config.timeoutIntervalForRequest = 18
         config.timeoutIntervalForResource = 35
         self.session = URLSession(configuration: config)
@@ -47,6 +105,22 @@ final class ManiFlixAPI {
         speedConfig.timeoutIntervalForRequest = 12
         speedConfig.timeoutIntervalForResource = 45
         self.speedSession = URLSession(configuration: speedConfig)
+    }
+
+    private func cacheTTL(for path: String) -> TimeInterval? {
+        if path == "/api/bootstrap/discover"
+            || path.hasPrefix("/api/movies")
+            || path.hasPrefix("/api/category")
+            || path.hasPrefix("/api/the-loai")
+            || path.hasPrefix("/api/search") {
+            return 60
+        }
+        if path.hasPrefix("/api/movie/")
+            || path.hasPrefix("/api/franchise")
+            || path.hasPrefix("/api/ads/") {
+            return 90
+        }
+        return nil
     }
 
     func cleanM3U8URL(from rawM3U8: String, extraParams: [String: String] = [:]) -> URL? {
@@ -74,10 +148,18 @@ final class ManiFlixAPI {
         if !query.isEmpty { comps.queryItems = query }
         guard let url = comps.url else { throw APIError.invalidURL }
 
+        let ttl = (method == "GET" && (token == nil || token?.isEmpty == true)) ? cacheTTL(for: path) : nil
+        let cacheKey = url.absoluteString
+        if ttl != nil, let cachedData = await memoryCache.get(key: cacheKey) {
+            if let decoded = try? decoder.decode(T.self, from: cachedData) {
+                return decoded
+            }
+        }
+
         var req = URLRequest(url: url)
         req.httpMethod = method
         req.setValue("application/json", forHTTPHeaderField: "Accept")
-        req.setValue("ManiFlix-macOS/1.0", forHTTPHeaderField: "User-Agent")
+        req.setValue("ManiFlix-macOS/2.0.2", forHTTPHeaderField: "User-Agent")
 
         if let token = token, !token.isEmpty {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -96,10 +178,18 @@ final class ManiFlixAPI {
             throw APIError.badStatus(http.statusCode, msg)
         }
         do {
-            return try decoder.decode(T.self, from: data)
+            let decoded = try decoder.decode(T.self, from: data)
+            if let ttl = ttl {
+                await memoryCache.set(key: cacheKey, data: data, ttl: ttl)
+            }
+            return decoded
         } catch {
             throw APIError.decodingFailed(error.localizedDescription)
         }
+    }
+
+    func fetchBootstrapDiscover() async throws -> BootstrapDiscoverResponse {
+        try await request(path: "/api/bootstrap/discover")
     }
 
     func fetchMovies(page: Int = 1) async throws -> MoviesPageResponse {

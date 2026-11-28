@@ -22,14 +22,20 @@ enum MacTab: String, CaseIterable, Identifiable {
 struct ManiFlixMacApp: App {
     @StateObject private var appState = AppState.shared
     @StateObject private var prefs = AppPreferences.shared
+    @StateObject private var updateManager = UpdateManager.shared
 
     var body: some Scene {
         WindowGroup {
             MacRootShell()
                 .preferredColorScheme(prefs.resolvedColorScheme)
                 .tint(prefs.currentAccentColor)
-                .task { await appState.bootstrapSession() }
+                .task {
+                    async let sessionTask: Void = appState.bootstrapSession()
+                    async let updateTask: Void = updateManager.checkForUpdates(manual: false)
+                    _ = await (sessionTask, updateTask)
+                }
                 .sheet(isPresented: $appState.showAuthSheet) { AuthSheetView() }
+                .sheet(isPresented: $updateManager.showUpdateSheet) { UpdatePromptView() }
                 .sheet(isPresented: Binding(
                     get: { !prefs.hasCompletedLanguageSetup },
                     set: { if !$0 { prefs.hasCompletedLanguageSetup = true } }

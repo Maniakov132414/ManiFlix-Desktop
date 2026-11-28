@@ -1,5 +1,6 @@
 (() => {
-  const APP_VERSION = '2.0.1';
+  const APP_VERSION = '2.0.2';
+  const APP_BUILD = 202;
 
   const THEME_PRESETS = [
     { id: 'crimson_violet', name: 'ManiFlix Mặc Định', mode: 'dark', accent: '#e11d48', bg: '#0b0f19', surface: '#0f172a' },
@@ -136,6 +137,11 @@
       langOnboarded: false
     }, safeJsonParse(localStorage.getItem('mf.prefs') || '{}', {})),
     desktop: { width: 1180, height: 760, fullscreen: false, maximized: false, layoutMode: 'desktop', monitorName: 'Primary', refreshRateHz: 60 },
+    appInfo: { ok: true, os: 'windows', arch: 'x86_64', pkgFormat: 'exe', version: APP_VERSION, build: APP_BUILD },
+    updateInfo: null,
+    updateStatus: '',
+    updateChecking: false,
+    activeUpdateForce: false,
     monitor: {
       liveProbe: false,
       testing: false,
@@ -155,6 +161,56 @@
 
   let heroAutoTimer = null;
   let heroDirectBusy = false;
+  const MOVIE_CACHE_TTL_MS = 90000;
+  const MOVIE_CACHE_MAX = 60;
+  const movieDetailCache = new Map();
+  const movieDetailInflight = new Map();
+  let prefetchTimer = null;
+
+  function fetchMovieDetailCached(slug) {
+    if (!slug) return Promise.reject(new Error('Missing slug'));
+    const now = Date.now();
+    const cached = movieDetailCache.get(slug);
+    if (cached && now - cached.ts < MOVIE_CACHE_TTL_MS) {
+      return Promise.resolve(cached.data);
+    }
+    if (movieDetailInflight.has(slug)) {
+      return movieDetailInflight.get(slug);
+    }
+    const req = api(`/api/movie/${encodeURIComponent(slug)}`)
+      .then(data => {
+        if (movieDetailCache.size >= MOVIE_CACHE_MAX) {
+          const oldest = movieDetailCache.keys().next().value;
+          if (oldest) movieDetailCache.delete(oldest);
+        }
+        movieDetailCache.set(slug, { ts: Date.now(), data });
+        return data;
+      })
+      .finally(() => {
+        movieDetailInflight.delete(slug);
+      });
+    movieDetailInflight.set(slug, req);
+    return req;
+  }
+
+  function schedulePrefetchMovie(slug) {
+    if (!slug) return;
+    const cached = movieDetailCache.get(slug);
+    if (cached && Date.now() - cached.ts < MOVIE_CACHE_TTL_MS) return;
+    if (movieDetailInflight.has(slug)) return;
+    clearTimeout(prefetchTimer);
+    prefetchTimer = setTimeout(() => {
+      prefetchTimer = null;
+      fetchMovieDetailCached(slug).catch(() => {});
+    }, 160);
+  }
+
+  function cancelPrefetchMovie() {
+    if (prefetchTimer) {
+      clearTimeout(prefetchTimer);
+      prefetchTimer = null;
+    }
+  }
 
   // Delegated broken-image fallback (poster_url -> thumb_url -> SVG placeholder)
   document.addEventListener(
@@ -395,20 +451,48 @@
     return next;
   }
 
+  function extractItems(val) {
+    if (Array.isArray(val)) return val;
+    if (val && Array.isArray(val.items)) return val.items;
+    return [];
+  }
+
   async function loadDiscover() {
     try {
-      const [latest, series, single, anime] = await Promise.all([
-        api('/api/movies?page=1'),
-        api('/api/category?type=phim-bo&page=1').catch(() => ({ items: [] })),
-        api('/api/category?type=phim-le&page=1').catch(() => ({ items: [] })),
-        api('/api/category?type=hoat-hinh&page=1').catch(() => ({ items: [] }))
-      ]);
-      state.heroMovies = latest.items || [];
+      let latestItems = [];
+      let seriesItems = [];
+      let singleItems = [];
+      let animeItems = [];
+      let usedBootstrap = false;
+
+      try {
+        const boot = await api('/api/bootstrap/discover');
+        latestItems = extractItems(boot.latest || boot.movies || boot.heroMovies || boot.hero || boot.phimMoi);
+        seriesItems = extractItems(boot.series || boot.seriesMovies || boot.phimBo);
+        singleItems = extractItems(boot.single || boot.singleMovies || boot.phimLe);
+        animeItems = extractItems(boot.anime || boot.animeMovies || boot.hoatHinh);
+        if (latestItems.length > 0) usedBootstrap = true;
+      } catch {}
+
+      if (!usedBootstrap) {
+        const [latest, series, single, anime] = await Promise.all([
+          api('/api/movies?page=1'),
+          api('/api/category?type=phim-bo&page=1').catch(() => ({ items: [] })),
+          api('/api/category?type=phim-le&page=1').catch(() => ({ items: [] })),
+          api('/api/category?type=hoat-hinh&page=1').catch(() => ({ items: [] }))
+        ]);
+        latestItems = latest.items || [];
+        seriesItems = series.items || [];
+        singleItems = single.items || [];
+        animeItems = anime.items || [];
+      }
+
+      state.heroMovies = latestItems;
       state.discoverPage = 1;
       state.discoverHasMore = state.heroMovies.length >= 10;
-      state.seriesMovies = series.items || [];
-      state.singleMovies = single.items || [];
-      state.animeMovies = anime.items || [];
+      state.seriesMovies = seriesItems;
+      state.singleMovies = singleItems;
+      state.animeMovies = animeItems;
       if (state.heroMovies[0]) {
         setAmbientUrl(resolveImg(state.heroMovies[0].poster_url || state.heroMovies[0].thumb_url));
       }
@@ -513,7 +597,7 @@
     heroDirectBusy = true;
     toast('Đang mở trình phát...');
     try {
-      const res = await api(`/api/movie/${encodeURIComponent(slug)}`);
+      const res = await fetchMovieDetailCached(slug);
       const movie = res.movie;
       const servers = res.episodes || [];
       if (!movie || !servers.length) {
@@ -990,7 +1074,7 @@
     render();
     try {
       const [res, fr] = await Promise.all([
-        api(`/api/movie/${encodeURIComponent(slug)}`),
+        fetchMovieDetailCached(slug),
         api(`/api/franchise?slug=${encodeURIComponent(slug)}`).catch(() => ({ seasons: [] }))
       ]);
       state.detailData = res;
@@ -1341,10 +1425,17 @@
         </div>
 
         <div class="settings-section">
-          <div class="settings-label">Ứng dụng</div>
+          <div class="settings-label">${tr('Ứng dụng', 'Application')}</div>
           <div class="settings-card">
-            <div class="s-row"><span>Phiên bản</span><span class="s-sub">${APP_VERSION}</span></div>
-            <div class="s-row clickable" id="btnResetPrefs"><span style="color:#ff453a;font-weight:600">Đặt lại mặc định</span></div>
+            <div class="s-row"><span>${tr('Phiên bản', 'Version')}</span><span class="s-sub">${APP_VERSION} (Build ${APP_BUILD})</span></div>
+            <div class="s-row clickable" id="btnCheckUpdates">
+              <div>
+                <div style="font-weight:700">${tr('Kiểm tra cập nhật', 'Check for Updates')}</div>
+                <div class="s-sub" id="updateStatusText">${esc(state.updateStatus || tr('Nhấn để kiểm tra phiên bản mới nhất', 'Click to check for the latest release'))}</div>
+              </div>
+              <span class="win-pill" style="color:var(--accent);border-color:color-mix(in srgb, var(--accent) 45%, transparent)">${state.updateChecking ? tr('Đang kiểm tra...', 'Checking...') : tr('Kiểm tra', 'Check')}</span>
+            </div>
+            <div class="s-row clickable" id="btnResetPrefs"><span style="color:#ff453a;font-weight:600">${tr('Đặt lại mặc định', 'Reset to Defaults')}</span></div>
           </div>
         </div>
       </div>`;
@@ -2668,7 +2759,14 @@
         }, 220);
       }
     };
+    scrubWrap.addEventListener('click', (e) => {
+      if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) {
+        e.preventDefault();
+        e.stopPropagation();
+      }
+    });
     scrubWrap.addEventListener('pointerdown', (e) => {
+      if (e.detail === 0 || (e.clientX === 0 && e.clientY === 0)) return;
       if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
@@ -2787,6 +2885,294 @@
     });
 
     loadCurrentEpisode(true);
+  }
+
+  const UPDATE_SNOOZE_KEY = 'mf.updateSnooze';
+  const UPDATE_SNOOZE_MS = 24 * 60 * 60 * 1000;
+
+  function compareSemver(a, b) {
+    const pa = String(a || '0').replace(/^v/i, '').split('.').map(x => parseInt(x, 10) || 0);
+    const pb = String(b || '0').replace(/^v/i, '').split('.').map(x => parseInt(x, 10) || 0);
+    const len = Math.max(pa.length, pb.length, 3);
+    for (let i = 0; i < len; i++) {
+      const va = pa[i] || 0;
+      const vb = pb[i] || 0;
+      if (va > vb) return 1;
+      if (va < vb) return -1;
+    }
+    return 0;
+  }
+
+  function formatSizeMb(bytes) {
+    const n = Number(bytes);
+    if (!Number.isFinite(n) || n <= 0) return '';
+    return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  }
+
+  async function openExternalUrl(url) {
+    if (!url) return;
+    try {
+      const r = await api(`/__desktop/open-url?url=${encodeURIComponent(url)}`);
+      if (r && r.ok) return;
+    } catch {}
+    try { window.open(url, '_blank', 'noopener'); } catch {}
+  }
+
+  function copyCommandText(cmd) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(cmd).then(() => {
+        toast(tr('Đã sao chép lệnh cài đặt', 'Install command copied'));
+      }).catch(() => fallbackCopyText(cmd));
+    } else {
+      fallbackCopyText(cmd);
+    }
+  }
+
+  function fallbackCopyText(text) {
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      document.execCommand('copy');
+      ta.remove();
+      toast(tr('Đã sao chép lệnh cài đặt', 'Install command copied'));
+    } catch {
+      toast(tr('Không thể sao chép tự động', 'Copy failed'));
+    }
+  }
+
+  function resolvePlatformDownloadTarget(info) {
+    const ai = state.appInfo || {};
+    const os = String(ai.os || 'windows').toLowerCase();
+    const pkg = String(ai.pkgFormat || '').toLowerCase();
+    const fallbackUrl = info.releasePageUrl || 'https://github.com/Maniakov132414/ManiFlix-Desktop/releases/latest';
+
+    if (os === 'windows') {
+      return {
+        id: 'win',
+        label: tr('Tải ManiFlix.exe (Windows)', 'Download ManiFlix.exe (Windows)'),
+        sub: formatSizeMb(info.windowsSizeBytes),
+        url: info.windowsExeUrl || fallbackUrl,
+        isDeb: false
+      };
+    }
+    if (os === 'macos') {
+      return {
+        id: 'mac',
+        label: tr('Tải ManiFlix-macOS.dmg (macOS)', 'Download ManiFlix-macOS.dmg (macOS)'),
+        sub: formatSizeMb(info.macosSizeBytes),
+        url: info.macosDmgUrl || fallbackUrl,
+        isDeb: false
+      };
+    }
+    if (os === 'linux' && pkg === 'deb') {
+      return {
+        id: 'deb',
+        label: tr('Tải ManiFlix-Linux-amd64.deb (Ubuntu / Debian)', 'Download ManiFlix-Linux-amd64.deb (Ubuntu / Debian)'),
+        sub: formatSizeMb(info.linuxDebSizeBytes),
+        url: info.linuxDebUrl || fallbackUrl,
+        isDeb: true
+      };
+    }
+    return {
+      id: 'appimage',
+      label: tr('Tải ManiFlix-Linux-x86_64.AppImage (Linux / Steam Deck)', 'Download ManiFlix-Linux-x86_64.AppImage (Linux / Steam Deck)'),
+      sub: formatSizeMb(info.linuxAppImageSizeBytes),
+      url: info.linuxAppImageUrl || fallbackUrl,
+      isDeb: false
+    };
+  }
+
+  function closeDesktopUpdateModal() {
+    if (state.activeUpdateForce) return;
+    state.activeUpdateForce = false;
+    const root = document.getElementById('modalRoot');
+    if (root) root.innerHTML = '';
+    restoreGamepadFocusIfActive();
+  }
+
+  function openDesktopUpdateModal(info, isForce) {
+    const root = document.getElementById('modalRoot');
+    if (!root || !info) return;
+    state.activeUpdateForce = !!isForce;
+
+    const currentVer = (state.appInfo && state.appInfo.version) || APP_VERSION;
+    const latestVer = String(info.latestVersion || currentVer).replace(/^v/i, '');
+    const primary = resolvePlatformDownloadTarget(info);
+    const fallbackUrl = info.releasePageUrl || 'https://github.com/Maniakov132414/ManiFlix-Desktop/releases/latest';
+
+    const allTargets = [
+      { id: 'win', label: 'Windows (.exe)', size: formatSizeMb(info.windowsSizeBytes), url: info.windowsExeUrl },
+      { id: 'mac', label: 'macOS (.dmg)', size: formatSizeMb(info.macosSizeBytes), url: info.macosDmgUrl },
+      { id: 'appimage', label: 'Linux / Steam Deck (.AppImage)', size: formatSizeMb(info.linuxAppImageSizeBytes), url: info.linuxAppImageUrl },
+      { id: 'deb', label: 'Ubuntu / Debian (.deb)', size: formatSizeMb(info.linuxDebSizeBytes), url: info.linuxDebUrl }
+    ].filter(t => t.url);
+
+    const notesRaw = String(info.releaseNotes || info.notes || '').trim();
+    const notesHtml = notesRaw
+      ? esc(notesRaw).replace(/\n/g, '<br/>')
+      : esc(tr(
+          'Phiên bản mới đã sẵn sàng với nhiều cải tiến tốc độ tải phim, bộ nhớ đệm thông minh và độ ổn định trình phát.',
+          'A new release is ready with faster startup caching, smoother playback, and desktop stability improvements.'
+        ));
+
+    const debHintCmd = 'sudo apt install ./ManiFlix-Linux-amd64.deb';
+
+    root.innerHTML = `
+      <div class="modal-backdrop update-backdrop" id="updateBackdrop" data-force-update="${isForce ? 'true' : 'false'}">
+        <div class="modal-card update-modal-card" role="dialog" aria-modal="true" data-force-update="${isForce ? 'true' : 'false'}">
+          <div class="update-modal-glow"></div>
+          <div class="update-modal-hdr">
+            <div style="display:flex;align-items:center;gap:10px;min-width:0">
+              <div class="update-app-badge">M</div>
+              <div style="min-width:0">
+                <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+                  <strong style="font-size:17px">${esc(info.title || `ManiFlix Desktop v${latestVer}`)}</strong>
+                  <span class="update-tier-pill ${isForce ? 'force' : 'soft'}">${isForce ? tr('Bắt buộc cập nhật', 'Required Update') : tr('Bản cập nhật mới', 'Update Available')}</span>
+                </div>
+                <div class="s-sub" style="margin-top:3px">v${esc(currentVer)} (Build ${APP_BUILD}) → <strong style="color:var(--accent)">v${esc(latestVer)}</strong></div>
+              </div>
+            </div>
+            ${isForce ? '' : `<button class="p-btn p-btn-icon" id="btnCloseUpdateModal" title="Đóng (Esc)">${svgIcon('close', 14)}</button>`}
+          </div>
+
+          <div class="update-notes-box">${notesHtml}</div>
+
+          <div class="update-actions-col">
+            <button class="btn-accent update-primary-btn" id="btnUpdatePrimary">
+              ${svgIcon('cloudUp', 16)}
+              <span>${esc(primary.label)}${primary.sub ? ` (${esc(primary.sub)})` : ''}</span>
+            </button>
+
+            ${primary.isDeb ? `
+              <div class="update-deb-hint">
+                <code>${debHintCmd}</code>
+                <button class="tb-btn" id="btnCopyDebCmd">${tr('Sao chép', 'Copy')}</button>
+              </div>` : ''}
+
+            <div class="update-secondary-row">
+              ${isForce ? '' : `<button class="btn-glass update-snooze-btn" id="btnUpdateSnooze">${tr('Nhắc lại sau 24 giờ', 'Remind me in 24h')}</button>`}
+              <button class="tb-btn" id="btnToggleOtherFormats" style="padding:9px 12px;border-radius:10px">
+                <span>${tr('Các bản tải PC khác', 'Other PC formats')}</span>
+                ${svgIcon('chevDown', 13)}
+              </button>
+            </div>
+
+            <div class="update-other-formats hidden" id="updateOtherFormats">
+              ${allTargets.map(t => `
+                <button class="tb-btn update-alt-btn" data-dl-url="${esc(t.url)}">
+                  <span>${esc(t.label)}</span>
+                  <span class="s-sub">${esc(t.size || '')}</span>
+                </button>`).join('')}
+              ${!primary.isDeb && info.linuxDebUrl ? `
+                <div class="update-deb-hint" style="margin-top:4px">
+                  <code>${debHintCmd}</code>
+                  <button class="tb-btn" id="btnCopyDebCmdAlt">${tr('Sao chép', 'Copy')}</button>
+                </div>` : ''}
+              <button class="tb-btn update-alt-btn" data-dl-url="${esc(fallbackUrl)}">
+                <span>${tr('Mở trang phát hành GitHub Releases', 'Open GitHub Releases')}</span>
+                <span class="s-sub">↗</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`;
+
+    const primaryBtn = document.getElementById('btnUpdatePrimary');
+    if (primaryBtn) primaryBtn.onclick = () => openExternalUrl(primary.url);
+
+    const copyBtn = document.getElementById('btnCopyDebCmd');
+    if (copyBtn) copyBtn.onclick = () => copyCommandText(debHintCmd);
+
+    const copyAltBtn = document.getElementById('btnCopyDebCmdAlt');
+    if (copyAltBtn) copyAltBtn.onclick = () => copyCommandText(debHintCmd);
+
+    const toggleBtn = document.getElementById('btnToggleOtherFormats');
+    const otherPanel = document.getElementById('updateOtherFormats');
+    if (toggleBtn && otherPanel) {
+      toggleBtn.onclick = () => otherPanel.classList.toggle('hidden');
+    }
+
+    root.querySelectorAll('[data-dl-url]').forEach(btn => {
+      btn.onclick = () => openExternalUrl(btn.dataset.dlUrl);
+    });
+
+    if (!isForce) {
+      const closeBtn = document.getElementById('btnCloseUpdateModal');
+      if (closeBtn) closeBtn.onclick = closeDesktopUpdateModal;
+
+      const backdrop = document.getElementById('updateBackdrop');
+      if (backdrop) {
+        backdrop.onclick = (e) => {
+          if (e.target.id === 'updateBackdrop') closeDesktopUpdateModal();
+        };
+      }
+
+      const snoozeBtn = document.getElementById('btnUpdateSnooze');
+      if (snoozeBtn) {
+        snoozeBtn.onclick = () => {
+          localStorage.setItem(UPDATE_SNOOZE_KEY, JSON.stringify({
+            version: latestVer,
+            until: Date.now() + UPDATE_SNOOZE_MS
+          }));
+          closeDesktopUpdateModal();
+          toast(tr('Sẽ nhắc cập nhật lại sau 24 giờ', 'Will remind again in 24 hours'));
+        };
+      }
+    }
+
+    if (gpInteracting && primaryBtn) {
+      setGamepadFocus(primaryBtn, false);
+    }
+  }
+
+  async function checkDesktopForUpdates(manual = false) {
+    if (state.updateChecking) return;
+    state.updateChecking = true;
+    if (manual && state.tab === 'settings') render();
+    try {
+      const [appInfoRes, verRes] = await Promise.all([
+        api('/__desktop/appinfo').catch(() => null),
+        api('/api/desktop/version', { cache: 'no-store' })
+      ]);
+      if (appInfoRes && appInfoRes.ok) {
+        state.appInfo = appInfoRes;
+      }
+      state.updateInfo = verRes;
+
+      const currentVer = (state.appInfo && state.appInfo.version) || APP_VERSION;
+      const latestVer = String(verRes.latestVersion || currentVer).replace(/^v/i, '');
+      const hasUpdate = compareSemver(latestVer, currentVer) > 0;
+      const minReq = verRes.minRequiredVersion ? String(verRes.minRequiredVersion).replace(/^v/i, '') : '';
+      const isForce = !!(verRes.forceUpdate || verRes.mode === 'force' || (minReq && compareSemver(currentVer, minReq) < 0));
+
+      if (!hasUpdate) {
+        state.updateStatus = tr(`Đang ở phiên bản mới nhất (${currentVer})`, `Up to date (${currentVer})`);
+        if (manual) toast(state.updateStatus);
+      } else {
+        state.updateStatus = tr(`Đã có bản mới: v${latestVer}`, `New version available: v${latestVer}`);
+        if (!manual && !isForce) {
+          const snooze = safeJsonParse(localStorage.getItem(UPDATE_SNOOZE_KEY) || 'null', null);
+          if (snooze && snooze.version === latestVer && Number(snooze.until) > Date.now()) {
+            return;
+          }
+        }
+        openDesktopUpdateModal(verRes, isForce);
+      }
+    } catch {
+      state.updateStatus = tr('Không thể kiểm tra cập nhật lúc này', 'Unable to check for updates');
+      if (manual) toast(state.updateStatus);
+    } finally {
+      state.updateChecking = false;
+      if (state.tab === 'settings' && state.settingsSubPage === 'main') {
+        const lbl = document.getElementById('updateStatusText');
+        if (lbl) lbl.textContent = state.updateStatus || tr('Nhấn để kiểm tra phiên bản mới nhất', 'Click to check for the latest release');
+        render();
+      }
+    }
   }
 
   function openAuthModal() {
@@ -3070,6 +3456,8 @@
       state.prefs = { themeMode: 'dark', presetId: 'apple-dark', accent: '#FA2D48', bg: '#121214', surface: '#1C1C1E', ambient: true, phoneCols: 3, autoCutAds: true, introSkip: 'button', autoNext: true };
       savePrefs(); toast('Đã đặt lại mặc định'); render();
     };
+    const btnChkUpd = document.getElementById('btnCheckUpdates');
+    if (btnChkUpd) btnChkUpd.onclick = () => checkDesktopForUpdates(true);
 
     const selTm = document.getElementById('selThemeMode');
     if (selTm) selTm.onchange = () => { state.prefs.themeMode = selTm.value; savePrefs(); render(); };
@@ -3166,6 +3554,9 @@
       const modalRoot = document.getElementById('modalRoot');
       if (modalRoot && modalRoot.innerHTML.trim()) {
         e.preventDefault();
+        if (state.activeUpdateForce || modalRoot.querySelector('[data-force-update="true"]')) {
+          return;
+        }
         modalRoot.innerHTML = '';
         return;
       }
@@ -3196,6 +3587,15 @@
     }
 
     if (!playerCtrl.isOpen()) return;
+
+    if (e.key === 'Enter') {
+      const tag = document.activeElement?.tagName;
+      if (tag !== 'BUTTON' && tag !== 'INPUT' && tag !== 'SELECT' && tag !== 'TEXTAREA') {
+        e.preventDefault();
+        playerCtrl.togglePlay();
+        return;
+      }
+    }
 
     const k = e.key.toLowerCase();
     if (e.code === 'Space' || k === 'k') {
@@ -3261,6 +3661,27 @@
       }
     });
 
+    let lastHoveredSlug = '';
+    mainContentEl.addEventListener('pointerover', (e) => {
+      const target = e.target.closest('[data-slug], [data-open-slug], [data-hero-play]');
+      const slug = target?.dataset?.slug || target?.dataset?.openSlug || target?.dataset?.heroPlay || '';
+      if (slug && slug !== lastHoveredSlug) {
+        lastHoveredSlug = slug;
+        schedulePrefetchMovie(slug);
+      }
+    }, { passive: true });
+    mainContentEl.addEventListener('pointerout', (e) => {
+      const cur = e.target.closest('[data-slug], [data-open-slug], [data-hero-play]');
+      if (!cur) return;
+      const rel = e.relatedTarget && typeof e.relatedTarget.closest === 'function'
+        ? e.relatedTarget.closest('[data-slug], [data-open-slug], [data-hero-play]')
+        : null;
+      if (rel !== cur) {
+        lastHoveredSlug = '';
+        cancelPrefetchMovie();
+      }
+    }, { passive: true });
+
     let scrollRaf = 0;
     mainContentEl.addEventListener('scroll', () => {
       if (scrollRaf) return;
@@ -3322,6 +3743,10 @@
     }
     if (scroll && typeof el.scrollIntoView === 'function') {
       el.scrollIntoView({ block: 'nearest', inline: 'nearest', behavior: 'smooth' });
+    }
+    const pfSlug = el.dataset && (el.dataset.slug || el.dataset.openSlug || el.dataset.heroPlay);
+    if (pfSlug) {
+      schedulePrefetchMovie(pfSlug);
     }
   }
 
@@ -3429,6 +3854,9 @@
   function handleGamepadBackInBrowser() {
     const modalRoot = document.getElementById('modalRoot');
     if (modalRoot && modalRoot.innerHTML.trim()) {
+      if (state.activeUpdateForce || modalRoot.querySelector('[data-force-update="true"]')) {
+        return;
+      }
       if (!state.prefs.langOnboarded) {
         state.prefs.langOnboarded = true;
         savePrefs();
@@ -3617,6 +4045,7 @@
   bootstrapAuth();
   loadDiscover();
   resetHeroAutoTimer();
+  setTimeout(() => checkDesktopForUpdates(false), 600);
   if (!state.prefs.langOnboarded) {
     setTimeout(() => openDesktopLanguageModal(true), 200);
   }
