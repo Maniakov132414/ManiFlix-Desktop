@@ -316,10 +316,8 @@ struct MacPlayerView: View {
                     .font(.caption.monospacedDigit())
                     .foregroundColor(Color.white.opacity(0.86))
 
-                Menu {
-                    if engine.availableSubtitles.isEmpty {
-                        Text("Không có phụ đề rời")
-                    } else {
+                if engine.hasEngSub {
+                    Menu {
                         ForEach(engine.availableSubtitles) { sub in
                             Button {
                                 engine.selectSubtitle(id: sub.id)
@@ -341,18 +339,18 @@ struct MacPlayerView: View {
                                 if engine.selectedSubtitleId == "off" { Image(systemName: "checkmark") }
                             }
                         }
+                    } label: {
+                        HStack(spacing: 4) {
+                            Image(systemName: engine.selectedSubtitleId == "off" ? "captions.bubble" : "captions.bubble.fill")
+                            Text(engine.currentSubtitleShortLabel)
+                        }
+                        .font(.caption.weight(.medium))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 9).padding(.vertical, 5)
                     }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: engine.selectedSubtitleId == "off" ? "captions.bubble" : "captions.bubble.fill")
-                        Text(engine.currentSubtitleShortLabel)
-                    }
-                    .font(.caption.weight(.medium))
-                    .foregroundColor(.white)
-                    .padding(.horizontal, 9).padding(.vertical, 5)
+                    .menuStyle(.borderlessButton)
+                    .adaptiveGlassCapsule(interactive: true)
                 }
-                .menuStyle(.borderlessButton)
-                .adaptiveGlassCapsule(interactive: true)
 
                 Menu {
                     ForEach(PlayerAspectMode.allCases) { m in

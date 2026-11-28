@@ -68,6 +68,7 @@ final class MacPlayerEngine: ObservableObject {
     @Published var outputDeviceName: String = "Loa MacBook / Hệ thống"
     @Published var availableSubtitles: [SubtitleTrackOption] = []
     @Published var selectedSubtitleId: String = "off"
+    @Published var hasEngSub: Bool = false
     private var subtitleOptionsMap: [String: AVMediaSelectionOption] = [:]
 
     var currentSubtitleShortLabel: String {
@@ -164,6 +165,10 @@ final class MacPlayerEngine: ObservableObject {
         skippedIds.removeAll()
         dismissedIds.removeAll()
         didFailover = false
+        availableSubtitles = []
+        subtitleOptionsMap = [:]
+        selectedSubtitleId = "off"
+        hasEngSub = false
 
         guard let ep = currentEpisode else {
             isFailed = true; isBuffering = false; errorMessage = "Không tìm thấy tập phim."; return
@@ -267,6 +272,9 @@ final class MacPlayerEngine: ObservableObject {
                         let viEn = opts.filter { $0.name == "Tiếng Việt" || $0.name == "English" }
                         self.availableSubtitles = viEn.isEmpty ? opts : viEn
                         self.subtitleOptionsMap = map
+                        let allViOnly = !opts.isEmpty && opts.allSatisfy { $0.name == "Tiếng Việt" }
+                        self.hasEngSub = opts.contains(where: { $0.name == "English" }) ||
+                            (!allViOnly && !opts.isEmpty && (self.movie.sub_langs ?? []).contains(where: { $0.lowercased().hasPrefix("en") }))
 
                         let pref = AppPreferences.shared.defaultSubtitleLang.lowercased()
                         if pref == "off" {
@@ -287,6 +295,7 @@ final class MacPlayerEngine: ObservableObject {
                         self.availableSubtitles = []
                         self.subtitleOptionsMap = [:]
                         self.selectedSubtitleId = "off"
+                        self.hasEngSub = false
                     }
                     if self.pendingResumeSec > 3 {
                         let target = min(self.pendingResumeSec, max(0, dur - 10))
@@ -348,21 +357,21 @@ final class MacPlayerEngine: ObservableObject {
             let mode = m.mode ?? (m.type == "ad" ? "cut" : "skip")
             if mode == "cut" && prefs.autoCutAds && !skippedIds.contains(m.id) && sec >= m.start && sec < end {
                 skippedIds.insert(m.id)
-                seek(to: end + 0.1)
+                seek(to: end + 0.1, programmatic: true)
                 showToast("Đã bỏ qua quảng cáo")
                 return
             }
-            if mode == "skip" && m.type != "outro" && prefs.introSkipBehavior != .off && sec >= m.start && sec < end - 0.5 {
+            if mode == "skip" && m.type != "outro" && prefs.introSkipBehavior != .off && sec >= m.start && sec < end {
                 if prefs.introSkipBehavior == .auto && !skippedIds.contains(m.id) {
                     skippedIds.insert(m.id)
                     undoSkipTime = sec
-                    seek(to: end + 0.1)
+                    seek(to: end + 0.1, programmatic: true)
                     return
                 } else if !dismissedIds.contains(m.id) && !skippedIds.contains(m.id) {
                     introFound = m
                 }
             }
-            if m.type == "outro" && prefs.introSkipBehavior != .off && sec >= m.start && sec < end - 0.5 && !dismissedIds.contains(m.id) {
+            if m.type == "outro" && prefs.introSkipBehavior != .off && sec >= m.start && sec < end && !dismissedIds.contains(m.id) {
                 outroFound = m
             }
         }
@@ -376,7 +385,7 @@ final class MacPlayerEngine: ObservableObject {
         undoSkipTime = currentTime
         activeSkipPrompt = nil
         activeOutroPrompt = nil
-        seek(to: end + 0.1)
+        seek(to: end + 0.1, programmatic: true)
         showToast("Đã bỏ qua")
     }
 
@@ -407,10 +416,21 @@ final class MacPlayerEngine: ObservableObject {
         showToast(label)
     }
 
-    func seek(to seconds: Double) {
+    func seek(to seconds: Double, programmatic: Bool = false) {
         let clamped = max(0, min(seconds, duration > 0 ? duration : seconds))
         player.seek(to: CMTime(seconds: clamped, preferredTimescale: 600), toleranceBefore: .zero, toleranceAfter: .zero)
         currentTime = clamped
+        if !programmatic {
+            for m in adMarkers {
+                let end = (m.openEnd == true && duration > m.start) ? duration : m.end
+                let mode = m.mode ?? (m.type == "ad" ? "cut" : "skip")
+                if mode == "skip" && clamped >= m.start && clamped < end {
+                    skippedIds.remove(m.id)
+                    dismissedIds.remove(m.id)
+                }
+            }
+            evaluateMarkers(at: clamped)
+        }
     }
 
     func setRate(_ rate: Float) {

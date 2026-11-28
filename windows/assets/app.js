@@ -1664,12 +1664,12 @@
             </div>
 
             <div class="player-ctrl-group">
-              <select class="p-select" id="selPlayerSub" title="Ngôn ngữ phụ đề (C / Tay cầm Y)">
+              <select class="p-select hidden" id="selPlayerSub" style="display:none" title="Ngôn ngữ phụ đề (C / Tay cầm Y)">
                 <option value="vi" ${activeSubLang === 'vi' ? 'selected' : ''}>Tiếng Việt</option>
                 <option value="en" ${activeSubLang === 'en' ? 'selected' : ''}>English</option>
                 <option value="off" ${activeSubLang === 'off' ? 'selected' : ''}>Tắt phụ đề</option>
               </select>
-              <div class="p-sub-sync" title="Đồng bộ phụ đề (-10s đến +10s, phím [ / ])">
+              <div class="p-sub-sync hidden" id="subSyncWrap" style="display:none" title="Đồng bộ phụ đề (-10s đến +10s, phím [ / ])">
                 <button class="p-btn p-sub-step" id="btnSubDelayMinus" type="button" title="Lùi phụ đề 0.5 giây ([)">-</button>
                 <button class="p-btn p-sub-val" id="btnSubDelayReset" type="button" title="Đặt lại độ trễ phụ đề 0.0s">0.0s</button>
                 <button class="p-btn p-sub-step" id="btnSubDelayPlus" type="button" title="Tiến phụ đề 0.5 giây (])">+</button>
@@ -1890,6 +1890,7 @@
 
     const subOverlayEl = document.getElementById('playerSubOverlay');
     const selSubEl = document.getElementById('selPlayerSub');
+    const subSyncWrapEl = document.getElementById('subSyncWrap');
     const btnSubMinus = document.getElementById('btnSubDelayMinus');
     const btnSubReset = document.getElementById('btnSubDelayReset');
     const btnSubPlus = document.getElementById('btnSubDelayPlus');
@@ -1905,6 +1906,42 @@
       if (/\b(en|eng|english)\b/.test(combined)) return 'en';
       if (/\b(vi|vie|viet)\b|tiếng\s*việt|tieng\s*viet/.test(combined)) return 'vi';
       return '';
+    }
+
+    function hasEngSubAvailable() {
+      const hTracks = (hls && Array.isArray(hls.subtitleTracks)) ? hls.subtitleTracks : [];
+      if (hTracks.some(t => classifySubTrack(t.lang, t.name) === 'en')) return true;
+      let nativeCount = 0;
+      let nativeAllVi = true;
+      if (video && video.textTracks) {
+        for (let i = 0; i < video.textTracks.length; i++) {
+          const tt = video.textTracks[i];
+          if (tt.kind !== 'subtitles' && tt.kind !== 'captions') continue;
+          nativeCount++;
+          const cls = classifySubTrack(tt.language, tt.label);
+          if (cls === 'en') return true;
+          if (cls !== 'vi') nativeAllVi = false;
+        }
+      }
+      const hlsAllVi = hTracks.length > 0 && hTracks.every(t => classifySubTrack(t.lang, t.name) === 'vi');
+      if ((hTracks.length > 0 && hlsAllVi && nativeCount === 0) || (hTracks.length === 0 && nativeCount > 0 && nativeAllVi)) {
+        return false;
+      }
+      if (movie && Array.isArray(movie.sub_langs) && movie.sub_langs.some(s => /^en/i.test(String(s || ''))) && (hTracks.length > 0 || nativeCount > 0)) {
+        return true;
+      }
+      return false;
+    }
+
+    function applySubControlsVisibility(show) {
+      if (selSubEl) {
+        selSubEl.classList.toggle('hidden', !show);
+        selSubEl.style.display = show ? '' : 'none';
+      }
+      if (subSyncWrapEl) {
+        subSyncWrapEl.classList.toggle('hidden', !show);
+        subSyncWrapEl.style.display = show ? '' : 'none';
+      }
     }
 
     function shiftCuesInTrack(tt, delaySec) {
@@ -1968,6 +2005,8 @@
     }
 
     function syncSubtitleState() {
+      const hasEngSub = hasEngSubAvailable();
+      applySubControlsVisibility(hasEngSub);
       if (selSubEl && selSubEl.value !== activeSubLang) {
         selSubEl.value = activeSubLang;
       }
@@ -2061,12 +2100,14 @@
     }
 
     function cycleSubtitle() {
+      if (!hasEngSubAvailable()) return;
       const order = ['vi', 'en', 'off'];
       const next = order[(order.indexOf(activeSubLang) + 1) % order.length];
       setSubtitleLanguage(next, true);
     }
 
     function setSubtitleDelay(nextDelay, announce = true) {
+      if (!hasEngSubAvailable()) return;
       const clamped = Math.max(-10, Math.min(10, Math.round(nextDelay * 10) / 10));
       subDelaySec = Object.is(clamped, -0) ? 0 : clamped;
       syncSubtitleState();
@@ -2080,6 +2121,7 @@
     function attachStream(srcUrl, label, rawUrl, resumeSec) {
       document.getElementById('playerSourceLbl').textContent = `Luồng phát: ${label}`;
       if (hls) { hls.destroy(); hls = null; }
+      applySubControlsVisibility(false);
       selQuality.innerHTML = '<option value="-1" selected>Auto</option>';
       let soughtResume = false;
       const tryResume = () => {
@@ -2204,6 +2246,7 @@
         .then(r => {
           markers = r.markers || [];
           renderScrubberMarkers();
+          evaluatePlaybackMarkers(false);
         })
         .catch(() => {});
 
@@ -2256,9 +2299,15 @@
       wakeHud();
     }
 
+    let programmaticSkipUntil = 0;
+    function getMarkerKey(m, endSec) {
+      return (m && m.id) ? String(m.id) : `${(m && m.type) || 'skip'}_${m ? m.start : 0}_${endSec}`;
+    }
+
     function triggerSkip() {
       if (!activeSkip) return;
-      skippedIds.add(activeSkip.m.id);
+      skippedIds.add(activeSkip.mkId);
+      programmaticSkipUntil = Date.now() + 900;
       video.currentTime = activeSkip.end + 0.1;
       skipBtn.classList.add('hidden');
       activeSkip = null;
@@ -2413,13 +2462,61 @@
     scrubWrap.addEventListener('pointerup', endScrub);
     scrubWrap.addEventListener('pointercancel', endScrub);
 
+    function evaluatePlaybackMarkers(isFromSeek = false) {
+      const t = video.currentTime || 0;
+      const dur = video.duration || 0;
+      const inProgSkip = Date.now() < programmaticSkipUntil;
+      activeSkip = null;
+      for (const m of markers) {
+        if (!m || typeof m.start !== 'number' || typeof m.end !== 'number') continue;
+        const end = m.openEnd && dur > m.start ? dur : m.end;
+        if (end <= m.start) continue;
+        const mkId = getMarkerKey(m, end);
+        const mode = m.mode || (m.type === 'ad' ? 'cut' : 'skip');
+        if (mode === 'cut' && state.prefs.autoCutAds && !skippedIds.has(mkId) && t >= m.start && t < end) {
+          skippedIds.add(mkId);
+          programmaticSkipUntil = Date.now() + 900;
+          video.currentTime = end + 0.1;
+          toast('Đã bỏ qua quảng cáo');
+          return;
+        }
+        if (mode === 'skip' && state.prefs.introSkip !== 'off' && t >= m.start && t < end) {
+          if (isFromSeek && !inProgSkip) {
+            skippedIds.delete(mkId);
+          }
+          if (!skippedIds.has(mkId)) {
+            if (state.prefs.introSkip === 'auto' && !isFromSeek) {
+              skippedIds.add(mkId);
+              programmaticSkipUntil = Date.now() + 900;
+              video.currentTime = end + 0.1;
+              toast('Đã tự động bỏ qua giới thiệu');
+              return;
+            }
+            activeSkip = { m, end, mkId };
+          }
+        }
+      }
+
+      if (activeSkip) {
+        const lbl = activeSkip.m.type === 'outro'
+          ? 'Bỏ qua kết thúc (S)'
+          : (activeSkip.m.type === 'recap' ? 'Bỏ qua tóm tắt (S)' : (activeSkip.m.type === 'intro' ? 'Bỏ qua phần giới thiệu (S)' : (activeSkip.m.label || 'Bỏ qua mở đầu (S)')));
+        skipBtn.innerHTML = `<span>${esc(lbl)}</span>${svgIcon('forward', 14)}`;
+        skipBtn.classList.remove('hidden');
+        skipBtn.onclick = triggerSkip;
+      } else {
+        skipBtn.classList.add('hidden');
+      }
+    }
+
     // Video lifecycle
-    video.onplay = () => { bufferingEl.classList.add('hidden'); updatePlayPauseUi(); };
-    video.onpause = () => { updatePlayPauseUi(); };
+    video.onplay = () => { bufferingEl.classList.add('hidden'); updatePlayPauseUi(); evaluatePlaybackMarkers(false); };
+    video.onpause = () => { updatePlayPauseUi(); evaluatePlaybackMarkers(false); };
+    video.onseeked = () => { syncScrubberUi(); evaluatePlaybackMarkers(true); };
     video.onwaiting = () => { bufferingEl.classList.remove('hidden'); };
     video.onplaying = () => { bufferingEl.classList.add('hidden'); updatePlayPauseUi(); };
     video.oncanplay = () => { bufferingEl.classList.add('hidden'); };
-    video.ondurationchange = () => { renderScrubberMarkers(); syncScrubberUi(); };
+    video.ondurationchange = () => { renderScrubberMarkers(); syncScrubberUi(); evaluatePlaybackMarkers(false); };
     video.onprogress = syncScrubberUi;
 
     video.ontimeupdate = () => {
@@ -2431,39 +2528,7 @@
         }
       }
       if (useCustomSubOverlay) renderFallbackSubCue();
-      const t = video.currentTime || 0;
-      const dur = video.duration || 0;
-
-      activeSkip = null;
-      for (const m of markers) {
-        const end = m.openEnd && dur > m.start ? dur : m.end;
-        const mode = m.mode || (m.type === 'ad' ? 'cut' : 'skip');
-        if (mode === 'cut' && state.prefs.autoCutAds && !skippedIds.has(m.id) && t >= m.start && t < end) {
-          skippedIds.add(m.id);
-          video.currentTime = end + 0.1;
-          toast('Đã bỏ qua quảng cáo');
-          return;
-        }
-        if (mode === 'skip' && state.prefs.introSkip !== 'off' && t >= m.start && t < end - 0.5 && !skippedIds.has(m.id)) {
-          if (state.prefs.introSkip === 'auto') {
-            skippedIds.add(m.id);
-            video.currentTime = end + 0.1;
-            toast('Đã tự động bỏ qua giới thiệu');
-            return;
-          }
-          activeSkip = { m, end };
-        }
-      }
-
-      if (activeSkip) {
-        const lbl = activeSkip.m.type === 'outro' ? 'Bỏ qua kết thúc (S)' : (activeSkip.m.label || 'Bỏ qua mở đầu (S)');
-        skipBtn.innerHTML = `<span>${esc(lbl)}</span>${svgIcon('forward', 14)}`;
-        skipBtn.classList.remove('hidden');
-        skipBtn.onclick = triggerSkip;
-      } else {
-        skipBtn.classList.add('hidden');
-      }
-
+      evaluatePlaybackMarkers(false);
       saveCurrentProgress(false);
     };
 
