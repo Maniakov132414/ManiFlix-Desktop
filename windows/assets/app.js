@@ -608,11 +608,55 @@
     return { primary, secondary, secondaryWithYear };
   }
 
+  function cleanFranchiseTitle(raw) {
+    return String(raw || '').replace(/^[\s:\-–—•|·/.,]+|[\s:\-–—•|·/]+$/g, '').replace(/\s{2,}/g, ' ').trim();
+  }
+
+  function buildOrthoFlexPattern(prefixStr) {
+    const clean = cleanFranchiseTitle(prefixStr);
+    if (!clean || clean.length < 3) return '';
+    return clean.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+      .replace(/['’‘`]/g, "['’‘`]?")
+      .replace(/[ìỳ]/gi, '[ìỳ]')
+      .replace(/[íý]/gi, '[íý]')
+      .replace(/[ỉỷ]/gi, '[ỉỷ]')
+      .replace(/[ĩỹ]/gi, '[ĩỹ]')
+      .replace(/[ịỵ]/gi, '[ịỵ]')
+      .replace(/(?:òa|oà)/gi, '(?:òa|oà)')
+      .replace(/(?:óa|oá)/gi, '(?:óa|oá)')
+      .replace(/(?:ỏa|oả)/gi, '(?:ỏa|oả)')
+      .replace(/(?:õa|oã)/gi, '(?:õa|oã)')
+      .replace(/(?:ọa|oạ)/gi, '(?:ọa|oạ)')
+      .replace(/(?:ùy|uỳ)/gi, '(?:ùy|uỳ)')
+      .replace(/(?:úy|uý)/gi, '(?:úy|uý)')
+      .replace(/(?:ủy|uỷ)/gi, '(?:ủy|uỷ)')
+      .replace(/(?:ũy|uỹ)/gi, '(?:ũy|uỹ)')
+      .replace(/(?:ụy|uỵ)/gi, '(?:ụy|uỵ)')
+      .replace(/\s+/g, '[\\s:\\-–—•|·]+');
+  }
+
+  function sortFranchiseList(rawList) {
+    const arr = Array.isArray(rawList) ? rawList.slice() : [];
+    const hasSort = arr.some(x => x && typeof x.sortIndex === 'number');
+    return arr.map((s, idx) => ({ s, idx })).sort((a, b) => {
+      const la = (a.s && a.s.isLiveAction === true) ? 1 : 0;
+      const lb = (b.s && b.s.isLiveAction === true) ? 1 : 0;
+      if (la !== lb) return la - lb;
+      if (hasSort) {
+        const sa = typeof a.s.sortIndex === 'number' ? a.s.sortIndex : 9999;
+        const sb = typeof b.s.sortIndex === 'number' ? b.s.sortIndex : 9999;
+        if (sa !== sb) return sa - sb;
+      }
+      return a.idx - b.idx;
+    }).map(x => x.s);
+  }
+
   function formatFranchiseSeasonChip(s, frMeta, list) {
     const ui = state.prefs.uiLang === 'en' ? 'en' : 'vi';
     const meta = frMeta || {};
     const prefixes = [meta.baseTitleVi, meta.baseTitleEn, meta.baseTitleRomaji, meta.baseTitle]
-      .map(x => String(x || '').trim()).filter(x => x.length >= 3).sort((a, b) => b.length - a.length);
+      .map(x => cleanFranchiseTitle(x)).filter(x => x.length >= 3).sort((a, b) => b.length - a.length);
+    const pats = prefixes.map(buildOrthoFlexPattern).filter(Boolean);
     const hasSeason2 = (list || []).some(it => {
       if (Number(it && it.seasonNumber) >= 2) return true;
       const pr = `${it?.name || ''} ${it?.nameVi || ''} ${it?.nameEn || ''} ${it?.fullTitle || ''} ${it?.slug || ''}`;
@@ -620,19 +664,27 @@
     });
     let cur = String(ui === 'en' ? (s.nameEn || s.name || s.title || s.fullTitle || '') : (s.nameVi || s.name || s.title || s.fullTitle || '')).trim();
     const rawPicked = cur;
-    for (const p of prefixes) {
-      const escRe = p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-      if (new RegExp(`^${escRe}[\\s:!\\-–—.]*$`, 'i').test(cur)) { cur = ''; break; }
-      const leadRe = new RegExp(`^${escRe}(?:\\s*[:\\-–—!|•]+\\s*|\\s+(?=(?:Movie|Phần|Phan|Season|SS|Mùa|OVA|ONA|Special|SP|Mini|Idol|Shinonome|Chapter|Part|Arc)\\b))`, 'i');
+    for (const pat of pats) {
+      if (new RegExp(`^${pat}[\\s:!\\-–—.]*$`, 'i').test(cur)) { cur = ''; break; }
+      const leadRe = new RegExp(`^${pat}(?:\\s*[:\\-–—!|•/]+\\s*|\\s+(?=(?:Movie|Phần|Phan|Season|SS|Mùa|OVA|ONA|Special|SP|Mini|Idol|Shinonome|Chapter|Part|Arc|Episode|Tập|\\d+|II|III|IV|V|VI)\\b))`, 'i');
       if (leadRe.test(cur)) { cur = cur.replace(leadRe, '').trim(); break; }
+      const trailRe = new RegExp(`(?:\\s*[:\\-–—|•]+\\s*)${pat}(\\s*\\((?:Live-Action|Movie|OVA|ONA|Special|TV)\\))?[\\s.!]*$`, 'i');
+      if (trailRe.test(cur)) {
+        const cand = cur.replace(trailRe, '$1').trim();
+        if (cand.length >= 2) { cur = cand; break; }
+      }
     }
-    cur = cur.replace(/^[:\-–—•|\s]+/, '').trim();
+    cur = cur.replace(/^[:\-–—•|\s]+|[:\-–—•|\s]+$/g, '').trim();
     if (!cur || /^tv\s*series$/i.test(cur)) {
       cur = /^tv\s*series$/i.test(rawPicked) ? 'TV Series' : (hasSeason2 ? (ui === 'en' ? 'Season 1' : 'Phần 1') : 'TV Series');
     } else if (ui === 'en' && !s.nameEn) {
       cur = cur.replace(/^Phần\s+(\d+)\b/i, 'Season $1').replace(/^Mùa\s+(\d+)\b/i, 'Season $1');
     } else if (ui === 'vi' && !s.nameVi) {
       cur = cur.replace(/^Season\s+(\d+)\b/i, 'Phần $1');
+    }
+    if (s && s.isLiveAction === true) {
+      cur = cur.replace(/\s*\((?:Movie|Phim\s*Lẻ)\)\s*/gi, ' ').replace(/\s{2,}/g, ' ').trim();
+      if (!/\(\s*live[\s\-]*action\s*\)/i.test(cur)) cur += ' (Live-Action)';
     }
     const fullTip = (ui === 'en' ? (s.originName || s.fullTitle || cur) : (s.fullTitle || cur)) + (s.year ? ` (${s.year})` : '');
     return { label: cur, tooltip: fullTip };
@@ -942,12 +994,12 @@
         api(`/api/franchise?slug=${encodeURIComponent(slug)}`).catch(() => ({ seasons: [] }))
       ]);
       state.detailData = res;
-      state.detailFranchise = fr.seasons || [];
+      state.detailFranchise = sortFranchiseList(fr.seasons || []);
       state.detailFranchiseMeta = {
-        baseTitle: fr.baseTitle || '',
-        baseTitleVi: fr.baseTitleVi || res.movie?.vi_name || '',
-        baseTitleEn: fr.baseTitleEn || res.movie?.en_name || '',
-        baseTitleRomaji: fr.baseTitleRomaji || res.movie?.romaji_name || ''
+        baseTitle: cleanFranchiseTitle(fr.baseTitle || ''),
+        baseTitleVi: cleanFranchiseTitle(fr.baseTitleVi || res.movie?.vi_name || ''),
+        baseTitleEn: cleanFranchiseTitle(fr.baseTitleEn || res.movie?.en_name || ''),
+        baseTitleRomaji: cleanFranchiseTitle(fr.baseTitleRomaji || res.movie?.romaji_name || '')
       };
       if (res.movie) setAmbientUrl(resolveImg(res.movie.poster_url || res.movie.thumb_url));
       const gSlug = res.movie?.category?.[0]?.slug;
@@ -1051,9 +1103,9 @@
     let franchiseHtml = '';
     if (state.detailFranchise.length > 1) {
       const fMeta = state.detailFranchiseMeta || {};
-      const fBase = state.prefs.uiLang === 'en'
+      const fBase = cleanFranchiseTitle(state.prefs.uiLang === 'en'
         ? (fMeta.baseTitleEn || getDisplayTitles({ name: fMeta.baseTitle, vi_name: fMeta.baseTitleVi, en_name: fMeta.baseTitleEn, romaji_name: fMeta.baseTitleRomaji }).primary || '')
-        : (fMeta.baseTitleVi || getDisplayTitles({ name: fMeta.baseTitle, vi_name: fMeta.baseTitleVi, en_name: fMeta.baseTitleEn, romaji_name: fMeta.baseTitleRomaji }).primary || '');
+        : (fMeta.baseTitleVi || getDisplayTitles({ name: fMeta.baseTitle, vi_name: fMeta.baseTitleVi, en_name: fMeta.baseTitleEn, romaji_name: fMeta.baseTitleRomaji }).primary || ''));
       const fHdr = state.prefs.uiLang === 'en'
         ? (fBase ? `Franchise: ${fBase} (${state.detailFranchise.length} parts)` : `Franchise (${state.detailFranchise.length} parts)`)
         : (fBase ? `Các phần phim: ${fBase} (${state.detailFranchise.length} phần)` : `Các phần phim (${state.detailFranchise.length})`);
@@ -1913,12 +1965,26 @@
       }
     }
 
+    let scrubTargetSec = 0;
+    let scrubCommitLockUntil = 0;
+    let lastLiveScrubAt = 0;
+    let scrubDwellTimer = null;
+
+    function isTimeBuffered(sec) {
+      if (!video || !video.buffered || !Number.isFinite(sec)) return false;
+      for (let i = 0; i < video.buffered.length; i++) {
+        if (sec >= video.buffered.start(i) - 0.05 && sec <= video.buffered.end(i) + 0.05) return true;
+      }
+      return false;
+    }
+
     function renderScrubberMarkers() {
       const dur = video.duration || 0;
       if (!dur || !markers.length) {
         scrubMarkers.innerHTML = '';
         return;
       }
+      scrubMarkers.style.pointerEvents = 'none';
       scrubMarkers.innerHTML = markers.map(m => {
         const start = Math.max(0, Math.min(dur, m.start || 0));
         const end = m.openEnd && dur > start ? dur : Math.max(start, Math.min(dur, m.end || start + 2));
@@ -1926,13 +1992,16 @@
         const widthPct = Math.max(0.4, ((end - start) / dur) * 100);
         const cls = m.type === 'ad' ? 'marker-ad' : (m.type === 'outro' ? 'marker-outro' : 'marker-intro');
         const label = m.label || (m.type === 'ad' ? 'Quảng cáo' : m.type === 'outro' ? 'Outro' : 'Intro');
-        return `<span class="scrubber-marker ${cls}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%" title="${esc(label)}"></span>`;
+        return `<span class="scrubber-marker ${cls}" style="left:${leftPct.toFixed(3)}%;width:${widthPct.toFixed(3)}%;pointer-events:none"></span>`;
       }).join('');
     }
 
     function syncScrubberUi() {
       const dur = video.duration || 0;
-      const cur = video.currentTime || 0;
+      const rawCur = video.currentTime || 0;
+      const locked = draggingScrub || (Date.now() < scrubCommitLockUntil && (video.seeking || Math.abs(rawCur - scrubTargetSec) > 1.5));
+      if (!locked) scrubCommitLockUntil = 0;
+      const cur = locked ? scrubTargetSec : rawCur;
       const pct = dur > 0 ? Math.min(100, Math.max(0, (cur / dur) * 100)) : 0;
       scrubFill.style.width = `${pct}%`;
       scrubThumb.style.left = `${pct}%`;
@@ -1941,7 +2010,7 @@
       if (dur > 0 && video.buffered && video.buffered.length > 0) {
         let bufEnd = 0;
         for (let i = 0; i < video.buffered.length; i++) {
-          if (video.buffered.start(i) <= cur + 1 && video.buffered.end(i) > bufEnd) {
+          if (video.buffered.start(i) <= rawCur + 1 && video.buffered.end(i) > bufEnd) {
             bufEnd = video.buffered.end(i);
           }
         }
@@ -2561,32 +2630,61 @@
       renderDrawer();
     };
 
-    // Scrubber drag & click
-    const seekFromPointer = (clientX) => {
+    // Scrubber drag & click (30fps live frame scrub when buffered; dwell/commit when unbuffered to prevent HLS XHR thrashing)
+    const seekFromPointer = (clientX, commitFinal = false) => {
       const rect = scrubWrap.getBoundingClientRect();
       const ratio = rect.width > 0 ? Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) : 0;
       const dur = video.duration || 0;
+      const target = ratio * dur;
       scrubTip.style.left = `${ratio * 100}%`;
-      scrubTip.textContent = formatTime(ratio * dur);
-      if (draggingScrub && dur > 0) {
-        video.currentTime = ratio * dur;
-        syncScrubberUi();
+      scrubTip.textContent = formatTime(target);
+      if (!draggingScrub || dur <= 0) return;
+      scrubTargetSec = target;
+      syncScrubberUi();
+      if (commitFinal) {
+        if (scrubDwellTimer) { clearTimeout(scrubDwellTimer); scrubDwellTimer = null; }
+        scrubCommitLockUntil = Date.now() + 1200;
+        if (!isTimeBuffered(target) && hls) {
+          try { hls.startLoad(target); } catch {}
+        }
+        video.currentTime = target;
+        evaluatePlaybackMarkers(true);
+        return;
+      }
+      if (isTimeBuffered(target)) {
+        if (scrubDwellTimer) { clearTimeout(scrubDwellTimer); scrubDwellTimer = null; }
+        const now = Date.now();
+        if ((!video.seeking || now - lastLiveScrubAt >= 260) && now - lastLiveScrubAt >= 32) {
+          lastLiveScrubAt = now;
+          video.currentTime = target;
+        }
+      } else {
+        if (scrubDwellTimer) clearTimeout(scrubDwellTimer);
+        scrubDwellTimer = setTimeout(() => {
+          scrubDwellTimer = null;
+          if (!draggingScrub) return;
+          if (hls) { try { hls.startLoad(scrubTargetSec); } catch {} }
+          video.currentTime = scrubTargetSec;
+        }, 220);
       }
     };
     scrubWrap.addEventListener('pointerdown', (e) => {
+      if (e.pointerType === 'mouse' && e.button !== 0) return;
       e.preventDefault();
+      e.stopPropagation();
       draggingScrub = true;
       scrubWrap.classList.add('dragging');
-      scrubWrap.setPointerCapture(e.pointerId);
-      seekFromPointer(e.clientX);
+      try { scrubWrap.setPointerCapture(e.pointerId); } catch {}
+      seekFromPointer(e.clientX, false);
       wakeHud();
     });
-    scrubWrap.addEventListener('pointermove', (e) => seekFromPointer(e.clientX));
+    scrubWrap.addEventListener('pointermove', (e) => seekFromPointer(e.clientX, false));
     const endScrub = (e) => {
       if (!draggingScrub) return;
-      seekFromPointer(e.clientX);
+      seekFromPointer(e.clientX, true);
       draggingScrub = false;
       scrubWrap.classList.remove('dragging');
+      syncScrubberUi();
       wakeHud();
     };
     scrubWrap.addEventListener('pointerup', endScrub);
